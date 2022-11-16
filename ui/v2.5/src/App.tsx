@@ -44,6 +44,7 @@ const Tags = lazy(() => import("./components/Tags/Tags"));
 const Images = lazy(() => import("./components/Images/Images"));
 const Setup = lazy(() => import("./components/Setup/Setup"));
 const Migrate = lazy(() => import("./components/Setup/Migrate"));
+const TV = lazy(() => import("./components/TV/TV"));
 
 const SceneFilenameParser = lazy(
   () => import("./components/SceneFilenameParser/SceneFilenameParser")
@@ -176,6 +177,7 @@ export const App: React.FC = () => {
               path="/sceneFilenameParser"
               component={SceneFilenameParser}
             />
+            <Route path="/tv" component={TV} />
             <Route
               path="/sceneDuplicateChecker"
               component={SceneDuplicateChecker}

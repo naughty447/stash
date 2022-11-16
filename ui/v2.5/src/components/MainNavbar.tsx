@@ -31,6 +31,7 @@ import {
   faTimes,
   faUser,
   faVideo,
+  faDesktop
 } from "@fortawesome/free-solid-svg-icons";
 
 interface IMenuItem {
@@ -81,6 +82,10 @@ const messages = defineMessages({
   donate: {
     id: "donate",
     defaultMessage: "Donate",
+  },
+  tv: {
+    id: "tv",
+    defaultMessage: "TV",
   },
   statistics: {
     id: "statistics",
@@ -149,6 +154,17 @@ const allMenuItems: IMenuItem[] = [
     href: "/tags",
     icon: faTag,
     hotkey: "g t",
+    userCreatable: true,
+  },
+  {
+    name: "tv",
+    message: {
+      id: "tv",
+      defaultMessage: "TV",
+    },
+    href: "/tv",
+    icon: faDesktop,
+    hotkey: "g q",
     userCreatable: true,
   },
 ];
