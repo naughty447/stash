@@ -309,11 +309,14 @@ const Player: React.FC<IPlayer> = ({ id, timestamp, onQueueRandom }) => {
         <ScenePlayer
           key="ScenePlayer"
           className="w-100 m-sm-auto no-gutter"
+          hideScrubberOverride={true}
           scene={scene}
-          timestamp={timestamp}
+          initialTimestamp={timestamp}
+          sendSetTimestamp={(value)=>{}}
           autoplay={false}
           onNext={onQueueRandom}
           onPrevious={onQueueRandom}
+          onComplete={()=>{}}
         />
       )}
     </>
