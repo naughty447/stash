@@ -19,13 +19,12 @@ import {
 } from "src/core/generated-graphql";
 import { ListFilter } from "../List/ListFilter";
 import { ListFilterOptions } from "src/models/list-filter/filter-options";
-import { Button, ButtonToolbar } from "react-bootstrap";
+import { Button, ButtonToolbar, ToggleButton } from "react-bootstrap";
 import { ScenePlayer } from "../ScenePlayer";
 import { TaggerContext } from "../Tagger/context";
 
 let VLC = false;
 let onlyScenes = false;
-const VLC_IP = "192.168.29.24";
 
 interface ITv {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
@@ -110,6 +109,8 @@ const Tv: React.FC<ITv> = () => {
     id: "tv",
   })} ${TITLE_SUFFIX}`;
 
+  const [includeScenes, setIncludeScenes] = useState<boolean>(true);
+  const [includeMarkers, setIncludeMarkers] = useState<boolean>(true);
   const [filter, setFilter] = useState<ListFilterModel>(dummyFilter);
   const [showPlayer, setShowPlayer] = useState(false);
   const [runningFilter, setRunningFilter] = useState<string>(
@@ -130,7 +131,7 @@ const Tv: React.FC<ITv> = () => {
     filter: ListFilterModel,
     selectedIds: Set<string>
   ) {
-    return <>{showPlayer && <MarkerPlayer searchTerm={runningFilter} />}</>;
+    return <>{showPlayer && <MarkerPlayer includeScenes={includeScenes} includeMarkers={includeMarkers} searchTerm={runningFilter} />}</>;
   }
   const listData = useScenesList({
     zoomable: true,
@@ -156,15 +157,17 @@ const Tv: React.FC<ITv> = () => {
       <ButtonToolbar className="align-items-center justify-content-center mb-2">
         <TaggerContext>{listData.template}</TaggerContext>
       </ButtonToolbar>
-      <Button style={{ float: "right", marginLeft:10 }} onClick={()=>{onlyScenes=false;}}>only markers</Button>
-      <Button style={{ float: "right", marginLeft:10 }} onClick={()=>{onlyScenes=true;}}>only scenes</Button>
-      <Button style={{ float: "right", marginLeft:10 }} onClick={()=>{VLC=!VLC;setShowPlayer(!showPlayer)}}>{VLC?"disable":"enable"} VLC</Button>
+      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={includeMarkers} value={1} type="checkbox" onChange={()=>{setIncludeMarkers(!includeMarkers)}}> Markers</ToggleButton></div>
+      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={includeScenes} value={1} type="checkbox" onChange={()=>{setIncludeScenes(!includeScenes)}}> Scenes</ToggleButton></div>
+      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={VLC} value={1} type="checkbox" onChange={()=>{VLC=!VLC;setShowPlayer(!showPlayer)}}> VLC</ToggleButton></div>
     </>
   );
 };
 
 interface IMarkerPlayer {
   searchTerm: string;
+  includeMarkers: boolean;
+  includeScenes: boolean;
 }
 
 interface Clip {
@@ -172,7 +175,7 @@ interface Clip {
   timestamp: number;
 }
 
-const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm }) => {
+const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm, includeMarkers, includeScenes }) => {
   const [markers, setMarkers] = useState<Clip[]>([]);
   const [index, setIndex] = useState<number>(0);
   const [sceneId, setSceneId] = useState<string>("");
@@ -201,8 +204,8 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm }) => {
       return undefined;
     }
   };
-  const ms = onlyScenes?[]:getMarkers();
-  const ss = onlyScenes?getScenes():[];
+  const ms = includeMarkers?getMarkers():[];
+  const ss = includeScenes?getScenes():[];
 
   let _markers = shuffle(ms && ss ? [...ms, ...ss] : []);
 
