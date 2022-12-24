@@ -47,6 +47,7 @@ const allMenuItems = [
   { id: "performers", headingID: "performers" },
   { id: "studios", headingID: "studios" },
   { id: "tags", headingID: "tags" },
+  { id: "tv", headingID: "tv" },
 ];
 
 export const SettingsInterfacePanel: React.FC = () => {
