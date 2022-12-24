@@ -25,7 +25,7 @@ import { TaggerContext } from "../Tagger/context";
 
 let VLC = false;
 let onlyScenes = false;
-const VLC_IP = "192.168.0.243";
+const VLC_IP = "192.168.29.24";
 
 interface ITv {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
@@ -194,8 +194,8 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm }) => {
     if (data) {
       return data.map((e) => ({
         id: e.id,
-        timestamp: random(120, (e.file.duration ? e.file.duration : 240) - 240),
-        duration: e.file.duration,
+        timestamp: random(120, (e.files[0].duration ? e.files[0].duration : 240) - 240),
+        duration: e.files[0].duration,
       }));
     } else {
       return undefined;
