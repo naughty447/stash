@@ -289,6 +289,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = ({
         },
         skipButtons: {},
         trackActivity: {},
+        nextButton: {}
       },
     };
 
@@ -455,6 +456,7 @@ export const ScenePlayer: React.FC<IScenePlayerProps> = ({
       },
     };
     player.mobileUi(mobileUiOptions);
+    player.nextButton();
 
     const { duration } = file;
     const sourceSelector = player.sourceSelector();

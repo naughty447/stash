@@ -209,9 +209,30 @@ class SourceSelectorPlugin extends videojs.getPlugin("plugin") {
   }
 }
 
+const nextButton = () => {
+  setTimeout(() => {
+    if (document.querySelectorAll(".vjs-nextButton").length != 0) return;
+    const touchOverlay = document.querySelector(".vjs-touch-overlay");
+    const nb = document.createElement("button");
+    nb.classList.add("vjs-button");
+    nb.classList.add("vjs-control");
+    nb.classList.add("vjs-icon-next");
+    nb.classList.add("vjs-nextButton");
+    nb.style.top="20%";
+    nb.style.left="75%";
+    nb.style.width="40%";
+    nb.style.height="20%";
+    nb.style.position="absolute";
+    nb.style.transform="translate(-50%,-50%)";
+    nb.innerHTML='<span class="vjs-icon-placeholder" aria-hidden="true"></span><span class="vjs-control-text" aria-live="polite">Next video</span>';
+    touchOverlay?.appendChild(nb);
+  }, 500);
+};
+
 // Register the plugin with video.js.
 videojs.registerComponent("SourceMenuButton", SourceMenuButton);
 videojs.registerPlugin("sourceSelector", SourceSelectorPlugin);
+videojs.registerPlugin("nextButton", nextButton);
 
 /* eslint-disable @typescript-eslint/naming-convention */
 declare module "video.js" {

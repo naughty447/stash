@@ -131,7 +131,17 @@ const Tv: React.FC<ITv> = () => {
     filter: ListFilterModel,
     selectedIds: Set<string>
   ) {
-    return <>{showPlayer && <MarkerPlayer includeScenes={includeScenes} includeMarkers={includeMarkers} searchTerm={runningFilter} />}</>;
+    return (
+      <>
+        {showPlayer && (
+          <MarkerPlayer
+            includeScenes={includeScenes}
+            includeMarkers={includeMarkers}
+            searchTerm={runningFilter}
+          />
+        )}
+      </>
+    );
   }
   const listData = useScenesList({
     zoomable: true,
@@ -151,15 +161,55 @@ const Tv: React.FC<ITv> = () => {
         defaultTitle={title_template}
         titleTemplate={`%s | ${title_template}`}
       />
-      <Button style={{ float: "right" }} onClick={onPlay}>
-        Play
-      </Button>
+
       <ButtonToolbar className="align-items-center justify-content-center mb-2">
         <TaggerContext>{listData.template}</TaggerContext>
       </ButtonToolbar>
-      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={includeMarkers} value={1} type="checkbox" onChange={()=>{setIncludeMarkers(!includeMarkers)}}> Markers</ToggleButton></div>
-      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={includeScenes} value={1} type="checkbox" onChange={()=>{setIncludeScenes(!includeScenes)}}> Scenes</ToggleButton></div>
-      <div style={{ float: "right", marginLeft:10 }}><ToggleButton checked={VLC} value={1} type="checkbox" onChange={()=>{VLC=!VLC;setShowPlayer(!showPlayer)}}> VLC</ToggleButton></div>
+      <div style={{ float: "right", marginLeft: 10 }}>
+        <Button style={{ float: "right" }} onClick={onPlay}>
+          Play
+        </Button>
+      </div>
+      <div style={{ float: "right", marginLeft: 10 }}>
+        <ToggleButton
+          checked={includeMarkers}
+          value={1}
+          type="checkbox"
+          onChange={() => {
+            setIncludeMarkers(!includeMarkers);
+          }}
+        >
+          {" "}
+          Markers
+        </ToggleButton>
+      </div>
+      <div style={{ float: "right", marginLeft: 10 }}>
+        <ToggleButton
+          checked={includeScenes}
+          value={1}
+          type="checkbox"
+          onChange={() => {
+            setIncludeScenes(!includeScenes);
+          }}
+        >
+          {" "}
+          Scenes
+        </ToggleButton>
+      </div>
+      <div style={{ float: "right", marginLeft: 10 }}>
+        <ToggleButton
+          checked={VLC}
+          value={1}
+          type="checkbox"
+          onChange={() => {
+            VLC = !VLC;
+            setShowPlayer(!showPlayer);
+          }}
+        >
+          {" "}
+          VLC
+        </ToggleButton>
+      </div>
     </>
   );
 };
@@ -175,7 +225,11 @@ interface Clip {
   timestamp: number;
 }
 
-const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm, includeMarkers, includeScenes }) => {
+const MarkerPlayer: React.FC<IMarkerPlayer> = ({
+  searchTerm,
+  includeMarkers,
+  includeScenes,
+}) => {
   const [markers, setMarkers] = useState<Clip[]>([]);
   const [index, setIndex] = useState<number>(0);
   const [sceneId, setSceneId] = useState<string>("");
@@ -197,15 +251,18 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm, includeMarkers, inc
     if (data) {
       return data.map((e) => ({
         id: e.id,
-        timestamp: random(120, (e.files[0].duration ? e.files[0].duration : 240) - 240),
+        timestamp: random(
+          120,
+          (e.files[0].duration ? e.files[0].duration : 240) - 240
+        ),
         duration: e.files[0].duration,
       }));
     } else {
       return undefined;
     }
   };
-  const ms = includeMarkers?getMarkers():[];
-  const ss = includeScenes?getScenes():[];
+  const ms = includeMarkers ? getMarkers() : [];
+  const ss = includeScenes ? getScenes() : [];
 
   let _markers = shuffle(ms && ss ? [...ms, ...ss] : []);
 
@@ -230,7 +287,7 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm, includeMarkers, inc
 
   const onQueueRandom = () => {
     if (index >= markers.length) return;
-    if (index + 1 == markers.length && markers.length>1) {
+    if (index + 1 == markers.length && markers.length > 1) {
       setMarkers(
         shuffle([...markers]).map((e) => ({
           id: e.id,
@@ -246,7 +303,7 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({ searchTerm, includeMarkers, inc
   };
 
   return (
-    <div className="hehe">
+    <div id="player">
       {sceneId !== "" && (
         <Player
           id={sceneId}
@@ -293,12 +350,13 @@ const Player: React.FC<IPlayer> = ({ id, timestamp, onQueueRandom }) => {
       )
     );
   useEffect(() => {
-    if (document.getElementById("vjs-next-btn")) {
-      document.getElementById("vjs-next-btn").ontouchend = () => {
-        // console.log("next");
-        onQueueRandom();
-      };
-    }
+    setTimeout(()=>{
+      if (document.querySelector(".vjs-nextButton")) {
+        document.querySelector(".vjs-nextButton").ontouchend = () => {
+          onQueueRandom();
+        };
+      }
+    }, 600);
   });
   return (
     <>
@@ -308,20 +366,21 @@ const Player: React.FC<IPlayer> = ({ id, timestamp, onQueueRandom }) => {
           Next
         </Button>
       </div>
-      {scene && !loading && !VLC && (
-        <ScenePlayer
-          key="ScenePlayer"
-          className="w-100 m-sm-auto no-gutter"
-          hideScrubberOverride={true}
-          scene={scene}
-          initialTimestamp={timestamp}
-          sendSetTimestamp={(value)=>{}}
-          autoplay={false}
-          onNext={onQueueRandom}
-          onPrevious={onQueueRandom}
-          onComplete={()=>{}}
-        />
-      )}
+      <div>
+        {scene && !loading && !VLC && (
+          <ScenePlayer
+            key="ScenePlayer"
+            hideScrubberOverride={true}
+            scene={scene}
+            initialTimestamp={timestamp}
+            sendSetTimestamp={(value) => {}}
+            autoplay={false}
+            onNext={onQueueRandom}
+            onPrevious={onQueueRandom}
+            onComplete={() => {}}
+          />
+        )}
+      </div>
     </>
   );
 };
