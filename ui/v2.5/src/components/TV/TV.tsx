@@ -2,8 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Route, Switch } from "react-router-dom";
 import { useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
-import { TITLE_SUFFIX } from "src/components/Shared";
-import { PersistanceLevel, useScenesList } from "src/hooks/ListHook";
 import {
   useFindScene,
   useFindSceneMarkers,
@@ -20,7 +18,7 @@ import {
 import { ListFilter } from "../List/ListFilter";
 import { ListFilterOptions } from "src/models/list-filter/filter-options";
 import { Button, ButtonToolbar, ToggleButton } from "react-bootstrap";
-import { ScenePlayer } from "../ScenePlayer";
+import { ScenePlayer } from "../ScenePlayer/ScenePlayer";
 import { TaggerContext } from "../Tagger/context";
 
 let VLC = false;
@@ -107,7 +105,7 @@ const Tv: React.FC<ITv> = () => {
 
   const title_template = `${intl.formatMessage({
     id: "tv",
-  })} ${TITLE_SUFFIX}`;
+  })}`;
 
   const [includeScenes, setIncludeScenes] = useState<boolean>(true);
   const [includeMarkers, setIncludeMarkers] = useState<boolean>(true);
@@ -143,17 +141,6 @@ const Tv: React.FC<ITv> = () => {
       </>
     );
   }
-  const listData = useScenesList({
-    zoomable: true,
-    selectable: true,
-    renderContent,
-    filterHook: (filter: ListFilterModel) => {
-      FILTER.criteria = filter.criteria;
-      FILTER.searchTerm = filter.searchTerm;
-      FILTER.itemsPerPage = 1000;
-      return filter;
-    },
-  });
 
   return (
     <>
@@ -162,9 +149,14 @@ const Tv: React.FC<ITv> = () => {
         titleTemplate={`%s | ${title_template}`}
       />
 
-      <ButtonToolbar className="align-items-center justify-content-center mb-2">
-        <TaggerContext>{listData.template}</TaggerContext>
-      </ButtonToolbar>
+      {showPlayer && (
+        <MarkerPlayer
+          includeScenes={includeScenes}
+          includeMarkers={includeMarkers}
+          searchTerm={runningFilter}
+        />
+      )}
+
       <div style={{ float: "right", marginLeft: 10 }}>
         <Button style={{ float: "right" }} onClick={onPlay}>
           Play
@@ -237,8 +229,8 @@ const MarkerPlayer: React.FC<IMarkerPlayer> = ({
   const [search, setSearch] = useState<string>("");
 
   const getMarkers = (): Clip[] | undefined => {
-    const data = useFindSceneMarkers(FILTER).data?.findSceneMarkers
-      .scene_markers;
+    const data =
+      useFindSceneMarkers(FILTER).data?.findSceneMarkers.scene_markers;
     if (data) {
       return data.map((e) => ({ id: e.scene.id, timestamp: e.seconds }));
     } else {
@@ -350,7 +342,7 @@ const Player: React.FC<IPlayer> = ({ id, timestamp, onQueueRandom }) => {
       )
     );
   useEffect(() => {
-    setTimeout(()=>{
+    setTimeout(() => {
       if (document.querySelector(".vjs-nextButton")) {
         document.querySelector(".vjs-nextButton").ontouchend = () => {
           onQueueRandom();
