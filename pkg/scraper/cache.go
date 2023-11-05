@@ -15,8 +15,6 @@ import (
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/match"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/scene"
-	"github.com/stashapp/stash/pkg/tag"
 	"github.com/stashapp/stash/pkg/txn"
 )
 
@@ -53,31 +51,34 @@ func isCDPPathWS(c GlobalConfig) bool {
 }
 
 type SceneFinder interface {
-	scene.IDFinder
+	models.SceneGetter
 	models.URLLoader
 }
 
 type PerformerFinder interface {
-	match.PerformerAutoTagQueryer
+	models.PerformerAutoTagQueryer
 	match.PerformerFinder
 }
 
 type StudioFinder interface {
-	match.StudioAutoTagQueryer
-	match.StudioFinder
+	models.StudioAutoTagQueryer
+	FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Studio, error)
 }
 
 type TagFinder interface {
-	match.TagAutoTagQueryer
-	tag.Queryer
+	models.TagGetter
+	models.TagAutoTagQueryer
 }
 
 type GalleryFinder interface {
-	Find(ctx context.Context, id int) (*models.Gallery, error)
+	models.GalleryGetter
 	models.FileLoader
+	models.URLLoader
 }
 
 type Repository struct {
+	TxnManager models.TxnManager
+
 	SceneFinder     SceneFinder
 	GalleryFinder   GalleryFinder
 	TagFinder       TagFinder
@@ -86,12 +87,27 @@ type Repository struct {
 	StudioFinder    StudioFinder
 }
 
+func NewRepository(repo models.Repository) Repository {
+	return Repository{
+		TxnManager:      repo.TxnManager,
+		SceneFinder:     repo.Scene,
+		GalleryFinder:   repo.Gallery,
+		TagFinder:       repo.Tag,
+		PerformerFinder: repo.Performer,
+		MovieFinder:     repo.Movie,
+		StudioFinder:    repo.Studio,
+	}
+}
+
+func (r *Repository) WithReadTxn(ctx context.Context, fn txn.TxnFunc) error {
+	return txn.WithReadTxn(ctx, r.TxnManager, fn)
+}
+
 // Cache stores the database of scrapers
 type Cache struct {
 	client       *http.Client
 	scrapers     map[string]scraper // Scraper ID -> Scraper
 	globalConfig GlobalConfig
-	txnManager   txn.Manager
 
 	repository Repository
 }
@@ -123,14 +139,13 @@ func newClient(gc GlobalConfig) *http.Client {
 //
 // Scraper configurations are loaded from yml files in the provided scrapers
 // directory and any subdirectories.
-func NewCache(globalConfig GlobalConfig, txnManager txn.Manager, repo Repository) (*Cache, error) {
+func NewCache(globalConfig GlobalConfig, repo Repository) (*Cache, error) {
 	// HTTP Client setup
 	client := newClient(globalConfig)
 
 	ret := &Cache{
 		client:       client,
 		globalConfig: globalConfig,
-		txnManager:   txnManager,
 		repository:   repo,
 	}
 
@@ -149,7 +164,7 @@ func (c *Cache) loadScrapers() (map[string]scraper, error) {
 
 	// Add built-in scrapers
 	freeOnes := getFreeonesScraper(c.globalConfig)
-	autoTag := getAutoTagScraper(c.txnManager, c.repository, c.globalConfig)
+	autoTag := getAutoTagScraper(c.repository, c.globalConfig)
 	scrapers[freeOnes.spec().ID] = freeOnes
 	scrapers[autoTag.spec().ID] = autoTag
 
@@ -370,9 +385,12 @@ func (c Cache) ScrapeID(ctx context.Context, scraperID string, id int, ty Scrape
 
 func (c Cache) getScene(ctx context.Context, sceneID int) (*models.Scene, error) {
 	var ret *models.Scene
-	if err := txn.WithReadTxn(ctx, c.txnManager, func(ctx context.Context) error {
+	r := c.repository
+	if err := r.WithReadTxn(ctx, func(ctx context.Context) error {
+		qb := r.SceneFinder
+
 		var err error
-		ret, err = c.repository.SceneFinder.Find(ctx, sceneID)
+		ret, err = qb.Find(ctx, sceneID)
 		if err != nil {
 			return err
 		}
@@ -381,7 +399,7 @@ func (c Cache) getScene(ctx context.Context, sceneID int) (*models.Scene, error)
 			return fmt.Errorf("scene with id %d not found", sceneID)
 		}
 
-		return ret.LoadURLs(ctx, c.repository.SceneFinder)
+		return ret.LoadURLs(ctx, qb)
 	}); err != nil {
 		return nil, err
 	}
@@ -390,9 +408,12 @@ func (c Cache) getScene(ctx context.Context, sceneID int) (*models.Scene, error)
 
 func (c Cache) getGallery(ctx context.Context, galleryID int) (*models.Gallery, error) {
 	var ret *models.Gallery
-	if err := txn.WithReadTxn(ctx, c.txnManager, func(ctx context.Context) error {
+	r := c.repository
+	if err := r.WithReadTxn(ctx, func(ctx context.Context) error {
+		qb := r.GalleryFinder
+
 		var err error
-		ret, err = c.repository.GalleryFinder.Find(ctx, galleryID)
+		ret, err = qb.Find(ctx, galleryID)
 		if err != nil {
 			return err
 		}
@@ -401,7 +422,12 @@ func (c Cache) getGallery(ctx context.Context, galleryID int) (*models.Gallery, 
 			return fmt.Errorf("gallery with id %d not found", galleryID)
 		}
 
-		return ret.LoadFiles(ctx, c.repository.GalleryFinder)
+		err = ret.LoadFiles(ctx, qb)
+		if err != nil {
+			return err
+		}
+
+		return ret.LoadURLs(ctx, qb)
 	}); err != nil {
 		return nil, err
 	}

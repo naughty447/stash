@@ -5,7 +5,7 @@ import * as GQL from "src/core/generated-graphql";
 import { GridCard } from "../Shared/GridCard";
 import { HoverPopover } from "../Shared/HoverPopover";
 import { Icon } from "../Shared/Icon";
-import { TagLink } from "../Shared/TagLink";
+import { SceneLink, TagLink } from "../Shared/TagLink";
 import { TruncatedText } from "../Shared/TruncatedText";
 import { PerformerPopoverButton } from "../Shared/PerformerPopoverButton";
 import { PopoverCountButton } from "../Shared/PopoverCountButton";
@@ -31,7 +31,7 @@ export const GalleryCard: React.FC<IProps> = (props) => {
     if (props.gallery.scenes.length === 0) return;
 
     const popoverContent = props.gallery.scenes.map((scene) => (
-      <TagLink key={scene.id} scene={scene} />
+      <SceneLink key={scene.id} scene={scene} />
     ));
 
     return (
@@ -52,7 +52,7 @@ export const GalleryCard: React.FC<IProps> = (props) => {
     if (props.gallery.tags.length <= 0) return;
 
     const popoverContent = props.gallery.tags.map((tag) => (
-      <TagLink key={tag.id} tag={tag} tagType="gallery" />
+      <TagLink key={tag.id} tag={tag} linkType="gallery" />
     ));
 
     return (
@@ -99,6 +99,7 @@ export const GalleryCard: React.FC<IProps> = (props) => {
           ) : (
             <img
               className="image-thumbnail"
+              loading="lazy"
               alt={props.gallery.studio.name}
               src={props.gallery.studio.image_path ?? ""}
             />
@@ -153,6 +154,7 @@ export const GalleryCard: React.FC<IProps> = (props) => {
         <>
           {props.gallery.cover ? (
             <img
+              loading="lazy"
               className="gallery-card-image"
               alt={props.gallery.title ?? ""}
               src={`${props.gallery.cover.paths.thumbnail}`}

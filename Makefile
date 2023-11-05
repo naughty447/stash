@@ -36,7 +36,7 @@ GO_BUILD_FLAGS := $(GO_BUILD_FLAGS)
 
 # set GO_BUILD_TAGS environment variable to any extra build tags required
 GO_BUILD_TAGS := $(GO_BUILD_TAGS)
-GO_BUILD_TAGS += sqlite_stat4
+GO_BUILD_TAGS += sqlite_stat4 sqlite_math_functions
 
 # set STASH_NOLEGACY environment variable or uncomment to disable legacy browser support
 # STASH_NOLEGACY := true
@@ -238,7 +238,7 @@ cross-compile-linux-arm64v8: build
 cross-compile-linux-arm32v7: export GOOS := linux
 cross-compile-linux-arm32v7: export GOARCH := arm
 cross-compile-linux-arm32v7: export GOARM := 7
-cross-compile-linux-arm32v7: export CC := arm-linux-gnueabihf-gcc
+cross-compile-linux-arm32v7: export CC := arm-linux-gnueabi-gcc -march=armv7-a 
 cross-compile-linux-arm32v7: STASH_OUTPUT := -o dist/stash-linux-arm32v7
 cross-compile-linux-arm32v7: PHASHER_OUTPUT := -o dist/phasher-linux-arm32v7
 cross-compile-linux-arm32v7: flags-release
@@ -319,7 +319,7 @@ it:
 # generates test mocks
 .PHONY: generate-test-mocks
 generate-test-mocks:
-	go run github.com/vektra/mockery/v2 --dir ./pkg/models --name '.*ReaderWriter' --outpkg mocks --output ./pkg/models/mocks
+	go run github.com/vektra/mockery/v2
 
 # runs server
 # sets the config file to use the local dev config

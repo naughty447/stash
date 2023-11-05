@@ -268,8 +268,22 @@ export const queryFindPerformers = (filter: ListFilterModel) =>
     },
   });
 
-export const useAllPerformersForFilter = () =>
-  GQL.useAllPerformersForFilterQuery();
+export const queryFindPerformersByIDForSelect = (performerIDs: number[]) =>
+  client.query<GQL.FindPerformersForSelectQuery>({
+    query: GQL.FindPerformersForSelectDocument,
+    variables: {
+      performer_ids: performerIDs,
+    },
+  });
+
+export const queryFindPerformersForSelect = (filter: ListFilterModel) =>
+  client.query<GQL.FindPerformersForSelectQuery>({
+    query: GQL.FindPerformersForSelectDocument,
+    variables: {
+      filter: filter.makeFindFilter(),
+      performer_filter: filter.makeFilter(),
+    },
+  });
 
 export const useFindStudio = (id: string) => {
   const skip = id === "new" || id === "";
@@ -824,8 +838,7 @@ export const useImagesDestroy = (input: GQL.ImagesDestroyInput) =>
 
 function updateImageIncrementO(id: string) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cache: ApolloCache<any>,
+    cache: ApolloCache<Record<string, StoreObject>>,
     result: FetchResult<GQL.ImageIncrementOMutation>
   ) => {
     const updatedOCount = result.data?.imageIncrementO;
@@ -879,8 +892,7 @@ export const mutateImageIncrementO = (id: string) =>
 
 function updateImageDecrementO(id: string) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cache: ApolloCache<any>,
+    cache: ApolloCache<Record<string, StoreObject>>,
     result: FetchResult<GQL.ImageDecrementOMutation>
   ) => {
     const updatedOCount = result.data?.imageDecrementO;
@@ -935,8 +947,7 @@ export const mutateImageDecrementO = (id: string) =>
 
 function updateImageResetO(id: string) {
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cache: ApolloCache<any>,
+    cache: ApolloCache<Record<string, StoreObject>>,
     result: FetchResult<GQL.ImageResetOMutation>
   ) => {
     const updatedOCount = result.data?.imageResetO;
@@ -1358,7 +1369,7 @@ const performerMutationImpactedTypeFields = {
   Tag: ["performer_count"],
 };
 
-const performerMutationImpactedQueries = [
+export const performerMutationImpactedQueries = [
   GQL.FindScenesDocument, // filter by performer tags
   GQL.FindImagesDocument, // filter by performer tags
   GQL.FindGalleriesDocument, // filter by performer tags
@@ -1371,8 +1382,6 @@ export const usePerformerCreate = () =>
     update(cache, result) {
       const performer = result.data?.performerCreate;
       if (!performer) return;
-
-      appendObject(cache, performer, GQL.AllPerformersForFilterDocument);
 
       // update stats
       updateStats(cache, "performer_count", 1);
@@ -2022,6 +2031,11 @@ export const useConfigureDLNA = () =>
     update: updateConfiguration,
   });
 
+export const useConfigurePlugin = () =>
+  GQL.useConfigurePluginMutation({
+    update: updateConfiguration,
+  });
+
 export const useEnableDLNA = () => GQL.useEnableDlnaMutation();
 
 export const useDisableDLNA = () => GQL.useDisableDlnaMutation();
@@ -2077,6 +2091,14 @@ export const mutateMigrate = (input: GQL.MigrateInput) =>
 
       evictQueries(cache, setupMutationImpactedQueries);
     },
+  });
+
+type BoolMap = { [key: string]: boolean };
+
+export const mutateSetPluginsEnabled = (enabledMap: BoolMap) =>
+  client.mutate<GQL.SetPluginsEnabledMutation>({
+    mutation: GQL.SetPluginsEnabledDocument,
+    variables: { enabledMap },
   });
 
 /// Tasks

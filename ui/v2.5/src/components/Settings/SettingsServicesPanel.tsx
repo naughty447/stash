@@ -20,7 +20,7 @@ import {
   StringSetting,
   SelectSetting,
 } from "./Inputs";
-import { SettingStateContext } from "./context";
+import { useSettings } from "./context";
 import {
   videoSortOrderIntlMap,
   defaultVideoSort,
@@ -35,25 +35,16 @@ export const SettingsServicesPanel: React.FC = () => {
   const intl = useIntl();
   const Toast = useToast();
 
-  const {
-    dlna,
-    loading: configLoading,
-    error,
-    saveDLNA,
-  } = React.useContext(SettingStateContext);
+  const { dlna, loading: configLoading, error, saveDLNA } = useSettings();
 
   // undefined to hide dialog, true for enable, false for disable
-  const [enableDisable, setEnableDisable] = useState<boolean | undefined>(
-    undefined
-  );
+  const [enableDisable, setEnableDisable] = useState<boolean>();
 
   const [enableUntilRestart, setEnableUntilRestart] = useState<boolean>(false);
-  const [enableDuration, setEnableDuration] = useState<number | undefined>(
-    undefined
-  );
+  const [enableDuration, setEnableDuration] = useState<number>(0);
 
   const [ipEntry, setIPEntry] = useState<string>("");
-  const [tempIP, setTempIP] = useState<string | undefined>();
+  const [tempIP, setTempIP] = useState<string>();
 
   const { data: statusData, loading, refetch: statusRefetch } = useDLNAStatus();
 
@@ -273,8 +264,8 @@ export const SettingsServicesPanel: React.FC = () => {
 
         <Form.Group id="temp-enable-duration">
           <DurationInput
-            numericValue={enableDuration ?? 0}
-            onValueChange={(v) => setEnableDuration(v ?? 0)}
+            value={enableDuration}
+            setValue={(v) => setEnableDuration(v ?? 0)}
             disabled={enableUntilRestart}
           />
           <Form.Text className="text-muted">
@@ -315,8 +306,8 @@ export const SettingsServicesPanel: React.FC = () => {
 
         <Form.Group id="temp-enable-duration">
           <DurationInput
-            numericValue={enableDuration ?? 0}
-            onValueChange={(v) => setEnableDuration(v ?? 0)}
+            value={enableDuration}
+            setValue={(v) => setEnableDuration(v ?? 0)}
             disabled={enableUntilRestart}
           />
           <Form.Text className="text-muted">
