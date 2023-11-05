@@ -1,14 +1,13 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { ListFilterModel } from "src/models/list-filter/filter";
-import { Button, ButtonGroup, ToggleButton } from "react-bootstrap";
+import { Button, ButtonGroup, Form, ToggleButton } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { useFindScene, useFindScenes } from "src/core/StashService";
 import ScenePlayer from "../ScenePlayer/ScenePlayer";
 import { SceneItemList } from "../Scenes/SceneList";
 import { SceneMarkerItemList } from "../Scenes/SceneMarkerList";
 
-let VLC = false;
-let onlyScenes = false;
+localStorage.setItem("VLC", "false");
 
 interface ITv {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
@@ -101,6 +100,17 @@ const Tv: React.FC<ITv> = ({ filterHook }) => {
             </ToggleButton>
           ))}
         </ButtonGroup>
+        <Form.Check // prettier-ignore
+          type="switch"
+          id="custom-switch"
+          label="Play on VLC"
+          onClick={() => {
+            localStorage.setItem(
+              "VLC",
+              `${!(localStorage.getItem("VLC") === "true")}`
+            );
+          }}
+        />
       </div>
     </>
   );
@@ -179,10 +189,12 @@ const Player: React.FC<IPlayer> = ({
       }
     }
   }, [loading, data]);
-
+  if (scene && localStorage.getItem("VLC") === "true") {
+    playOnVLC(scene, isMarker ? initialTimestamp : timestamp);
+  }
   return (
     <>
-      {scene && (
+      {scene && localStorage.getItem("VLC") !== "true" ? (
         <ScenePlayer
           key="ScenePlayer"
           hideScrubberOverride={true}
@@ -195,8 +207,37 @@ const Player: React.FC<IPlayer> = ({
           onPrevious={onPrev}
           onComplete={onNext}
         />
+      ) : (
+        <Button onClick={onNext}>NEXT</Button>
       )}
     </>
   );
 };
+
+function playOnVLC(scene: any, timestamp: number) {
+  fetch(
+    `http://${VLC_IP}:4001/join?input=${scene.paths.stream}&command=in_play`,
+    {
+      headers: {
+        Authorization: "Basic " + btoa(":1234"),
+      },
+    }
+  ).then((e) =>
+    setTimeout(
+      () =>
+        fetch(
+          `http://${VLC_IP}:4001/join?val=${Math.floor(
+            timestamp
+          )}&command=seek`,
+          {
+            headers: {
+              Authorization: "Basic " + btoa(":1234"),
+            },
+          }
+        ),
+      1000
+    )
+  );
+}
+
 export default Tv;
