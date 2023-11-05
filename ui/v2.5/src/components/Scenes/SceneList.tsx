@@ -29,7 +29,7 @@ import { SceneMergeModal } from "./SceneMergeDialog";
 import { objectTitle } from "src/core/files";
 import TextUtils from "src/utils/text";
 
-const SceneItemList = makeItemList({
+export const SceneItemList = makeItemList({
   filterMode: GQL.FilterMode.Scenes,
   useResult: useFindScenes,
   getItems(result: GQL.FindScenesQueryResult) {

@@ -14,7 +14,7 @@ import { ListFilterModel } from "src/models/list-filter/filter";
 import { DisplayMode } from "src/models/list-filter/types";
 import { MarkerWallPanel } from "../Wall/WallPanel";
 
-const SceneMarkerItemList = makeItemList({
+export const SceneMarkerItemList = makeItemList({
   filterMode: GQL.FilterMode.SceneMarkers,
   useResult: useFindSceneMarkers,
   getItems(result: GQL.FindSceneMarkersQueryResult) {

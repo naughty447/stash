@@ -1,25 +1,11 @@
-import React, { useEffect, useState } from "react";
-import { Route, Switch } from "react-router-dom";
-import { useIntl } from "react-intl";
-import { Helmet } from "react-helmet";
-import {
-  useFindScene,
-  useFindSceneMarkers,
-  useFindScenes,
-} from "src/core/StashService";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { ListFilterModel } from "src/models/list-filter/filter";
-import {
-  FilterMode,
-  FindScenesQueryResult,
-  Scene,
-  SceneMarker,
-  useFindScenesQuery,
-} from "src/core/generated-graphql";
-import { ListFilter } from "../List/ListFilter";
-import { ListFilterOptions } from "src/models/list-filter/filter-options";
-import { Button, ButtonToolbar, ToggleButton } from "react-bootstrap";
-import { ScenePlayer } from "../ScenePlayer/ScenePlayer";
-import { TaggerContext } from "../Tagger/context";
+import { Button, ButtonGroup, ToggleButton } from "react-bootstrap";
+import * as GQL from "src/core/generated-graphql";
+import { useFindScene, useFindScenes } from "src/core/StashService";
+import ScenePlayer from "../ScenePlayer/ScenePlayer";
+import { SceneItemList } from "../Scenes/SceneList";
+import { SceneMarkerItemList } from "../Scenes/SceneMarkerList";
 
 let VLC = false;
 let onlyScenes = false;
@@ -27,133 +13,72 @@ let onlyScenes = false;
 interface ITv {
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
 }
-
-function shuffle(array: Clip[]) {
-  let currentIndex = array.length,
-    randomIndex;
-  // While there remain elements to shuffle.
-  while (currentIndex != 0) {
-    // Pick a remaining element.
-    randomIndex = Math.floor(Math.random() * currentIndex);
-    currentIndex--;
-    // if (array[currentIndex].id === array[randomIndex].id) {
-    //   currentIndex++;
-    //   continue;
-    // }
-    // And swap it with the current element.
-    [array[currentIndex], array[randomIndex]] = [
-      array[randomIndex],
-      array[currentIndex],
-    ];
-  }
-  return array;
+interface IPlayer {
+  sceneId: string;
+  onNext: () => void;
+  onPrev: () => void;
+  initialTimestamp?: number;
+  isMarker: boolean;
+}
+interface IRandomScenePlayer {
+  scenesData: GQL.FindScenesQuery;
+}
+interface IRandomMarkerPlayer {
+  markersData: GQL.FindSceneMarkersQuery;
 }
 
-const filterOptions = new ListFilterOptions("name", [], [], []);
-function xmur3(str: string) {
-  for (var i = 0, h = 1779033703 ^ str.length; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  return function () {
-    h = Math.imul(h ^ (h >>> 16), 2246822507);
-    h = Math.imul(h ^ (h >>> 13), 3266489909);
-    return (h ^= h >>> 16) >>> 0;
-  };
-}
-function sfc32(a, b, c, d) {
-  return function () {
-    a >>>= 0;
-    b >>>= 0;
-    c >>>= 0;
-    d >>>= 0;
-    var t = (a + b) | 0;
-    a = b ^ (b >>> 9);
-    b = (c + (c << 3)) | 0;
-    c = (c << 21) | (c >>> 11);
-    d = (d + 1) | 0;
-    t = (t + d) | 0;
-    c = (c + t) | 0;
-    return (t >>> 0) / 4294967296;
-  };
-}
-function mulberry32(a) {
-  return function () {
-    var t = (a += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const randomSeed = Math.floor(Math.random() * 10000);
-const seed = xmur3("" + randomSeed);
-function random(min: number, max: number): number {
-  const end = Math.floor(mulberry32(seed())() * (max - min + 1) + min);
-  const start = Math.floor(
-    sfc32(seed(), seed(), seed(), seed())() * (max - min + 1) + min
-  );
-  return (start + end) / 2;
-}
-const dummyFilter = new ListFilterModel(FilterMode.SceneMarkers);
-dummyFilter.searchTerm = "";
-dummyFilter.itemsPerPage = 1000;
+const radios = [
+  { name: " Scene", value: "Scene" },
+  { name: " Marker", value: "Marker" },
+];
 
-let FILTER: ListFilterModel = dummyFilter;
-
-const Tv: React.FC<ITv> = () => {
-  const intl = useIntl();
-
-  const title_template = `${intl.formatMessage({
-    id: "tv",
-  })}`;
-
-  const [includeScenes, setIncludeScenes] = useState<boolean>(true);
-  const [includeMarkers, setIncludeMarkers] = useState<boolean>(true);
-  const [filter, setFilter] = useState<ListFilterModel>(dummyFilter);
+const Tv: React.FC<ITv> = ({ filterHook }) => {
   const [showPlayer, setShowPlayer] = useState(false);
-  const [runningFilter, setRunningFilter] = useState<string>(
-    filter.searchTerm + ""
-  );
-
-  const onFilterUpdate = (newFilter: ListFilterModel) => {
-    setFilter(newFilter);
-  };
-
+  const [tvType, setTvType] = useState(radios[0].value);
   const onPlay = () => {
-    setRunningFilter(filter.searchTerm + "");
     setShowPlayer(true);
   };
 
-  function renderContent(
-    result: FindScenesQueryResult,
+  function renderScenesContent(
+    result: GQL.FindScenesQueryResult,
     filter: ListFilterModel,
-    selectedIds: Set<string>
+    selectedIds: Set<string>,
+    onSelectChange: (id: string, selected: boolean, shiftKey: boolean) => void
   ) {
+    if (!showPlayer || !result.data?.findScenes) return;
+
     return (
       <>
-        {showPlayer && (
-          <MarkerPlayer
-            includeScenes={includeScenes}
-            includeMarkers={includeMarkers}
-            searchTerm={runningFilter}
-          />
-        )}
+        <RandomScenePlayer scenesData={result.data} />
+      </>
+    );
+  }
+
+  function renderMarkersContent(
+    result: GQL.FindSceneMarkersQueryResult,
+    filter: ListFilterModel
+  ) {
+    if (!showPlayer || !result.data?.findSceneMarkers) return;
+    console.log(result.data?.findSceneMarkers);
+
+    return (
+      <>
+        <RandomMarkerPlayer markersData={result.data} />
       </>
     );
   }
 
   return (
     <>
-      <Helmet
-        defaultTitle={title_template}
-        titleTemplate={`%s | ${title_template}`}
-      />
-
-      {showPlayer && (
-        <MarkerPlayer
-          includeScenes={includeScenes}
-          includeMarkers={includeMarkers}
-          searchTerm={runningFilter}
+      {tvType === radios[0].value ? (
+        <SceneItemList
+          filterHook={filterHook}
+          renderContent={renderScenesContent}
+        />
+      ) : (
+        <SceneMarkerItemList
+          filterHook={filterHook}
+          renderContent={renderMarkersContent}
         />
       )}
 
@@ -161,218 +86,116 @@ const Tv: React.FC<ITv> = () => {
         <Button style={{ float: "right" }} onClick={onPlay}>
           Play
         </Button>
-      </div>
-      <div style={{ float: "right", marginLeft: 10 }}>
-        <ToggleButton
-          checked={includeMarkers}
-          value={1}
-          type="checkbox"
-          onChange={() => {
-            setIncludeMarkers(!includeMarkers);
-          }}
-        >
-          {" "}
-          Markers
-        </ToggleButton>
-      </div>
-      <div style={{ float: "right", marginLeft: 10 }}>
-        <ToggleButton
-          checked={includeScenes}
-          value={1}
-          type="checkbox"
-          onChange={() => {
-            setIncludeScenes(!includeScenes);
-          }}
-        >
-          {" "}
-          Scenes
-        </ToggleButton>
-      </div>
-      <div style={{ float: "right", marginLeft: 10 }}>
-        <ToggleButton
-          checked={VLC}
-          value={1}
-          type="checkbox"
-          onChange={() => {
-            VLC = !VLC;
-            setShowPlayer(!showPlayer);
-          }}
-        >
-          {" "}
-          VLC
-        </ToggleButton>
+        <ButtonGroup>
+          {radios.map((radio, idx) => (
+            <ToggleButton
+              key={idx}
+              id={`radio-${idx}`}
+              type="radio"
+              name="radio"
+              value={radio.value}
+              checked={tvType === radio.value}
+              onChange={(e) => setTvType(e.currentTarget.value)}
+            >
+              {radio.name}
+            </ToggleButton>
+          ))}
+        </ButtonGroup>
       </div>
     </>
   );
 };
 
-interface IMarkerPlayer {
-  searchTerm: string;
-  includeMarkers: boolean;
-  includeScenes: boolean;
-}
+const RandomScenePlayer: React.FC<IRandomScenePlayer> = ({ scenesData }) => {
+  const [index, setIndex] = useState(0);
+  const scenes = scenesData.findScenes.scenes;
 
-interface Clip {
-  id: string;
-  timestamp: number;
-}
-
-const MarkerPlayer: React.FC<IMarkerPlayer> = ({
-  searchTerm,
-  includeMarkers,
-  includeScenes,
-}) => {
-  const [markers, setMarkers] = useState<Clip[]>([]);
-  const [index, setIndex] = useState<number>(0);
-  const [sceneId, setSceneId] = useState<string>("");
-  const [timestamp, setTimestamp] = useState<number>(0);
-  const [search, setSearch] = useState<string>("");
-
-  const getMarkers = (): Clip[] | undefined => {
-    const data =
-      useFindSceneMarkers(FILTER).data?.findSceneMarkers.scene_markers;
-    if (data) {
-      return data.map((e) => ({ id: e.scene.id, timestamp: e.seconds }));
-    } else {
-      return undefined;
-    }
+  const incrementIndex = () => {
+    setIndex((index + 1) % scenesData.findScenes.count);
   };
-
-  const getScenes = (): Clip[] | undefined => {
-    const data = useFindScenes(FILTER).data?.findScenes.scenes;
-    if (data) {
-      return data.map((e) => ({
-        id: e.id,
-        timestamp: random(
-          120,
-          (e.files[0].duration ? e.files[0].duration : 240) - 240
-        ),
-        duration: e.files[0].duration,
-      }));
-    } else {
-      return undefined;
-    }
-  };
-  const ms = includeMarkers ? getMarkers() : [];
-  const ss = includeScenes ? getScenes() : [];
-
-  let _markers = shuffle(ms && ss ? [...ms, ...ss] : []);
-
-  useEffect(() => {
-    if (
-      (searchTerm !== search || markers.length == 0) &&
-      ms !== undefined &&
-      ss !== undefined
-    ) {
-      console.log("playing from ", _markers.length);
-      if (_markers.length == 0) {
-        _markers = [{ id: "1", timestamp: 1 }];
-      }
-      setMarkers(_markers);
-      setSearch(searchTerm + "");
-      setIndex(0);
-    }
-  });
-  useEffect(() => {
-    onQueueRandom();
-  }, [markers]);
-
-  const onQueueRandom = () => {
-    if (index >= markers.length) return;
-    if (index + 1 == markers.length && markers.length > 1) {
-      setMarkers(
-        shuffle([...markers]).map((e) => ({
-          id: e.id,
-          timestamp: random(120, (e.duration ? e.duration : 240) - 240),
-          duration: e.duration,
-        }))
-      );
-    }
-    const num = (index + 1) % markers.length;
-    setIndex(num);
-    setTimestamp(markers[num].timestamp);
-    setSceneId(markers[num].id);
+  const decrementIndex = () => {
+    setIndex(index - 1);
   };
 
   return (
-    <div id="player">
-      {sceneId !== "" && (
-        <Player
-          id={sceneId}
-          timestamp={timestamp}
-          onQueueRandom={onQueueRandom}
-        />
-      )}
-    </div>
+    <>
+      <Player
+        sceneId={scenes[index].id}
+        onNext={incrementIndex}
+        onPrev={decrementIndex}
+        isMarker={false}
+      />
+    </>
   );
 };
 
-interface IPlayer {
-  id: string;
-  timestamp: number;
-  onQueueRandom: () => void;
-}
-const Player: React.FC<IPlayer> = ({ id, timestamp, onQueueRandom }) => {
-  console.log(id, timestamp);
+const RandomMarkerPlayer: React.FC<IRandomMarkerPlayer> = ({ markersData }) => {
+  const [index, setIndex] = useState(0);
+  const markers = markersData.findSceneMarkers.scene_markers;
 
-  const { data, loading, refetch } = useFindScene(id ?? "");
-  const scene = data?.findScene;
-  if (scene && VLC)
-    fetch(
-      `http://${VLC_IP}:4001/join?input=${scene.paths.stream}&command=in_play`,
-      {
-        headers: {
-          Authorization: "Basic " + btoa(":1234"),
-        },
-      }
-    ).then((e) =>
-      setTimeout(
-        () =>
-          fetch(
-            `http://${VLC_IP}:4001/join?val=${Math.floor(
-              timestamp
-            )}&command=seek`,
-            {
-              headers: {
-                Authorization: "Basic " + btoa(":1234"),
-              },
-            }
-          ),
-        1000
-      )
-    );
-  useEffect(() => {
-    setTimeout(() => {
-      if (document.querySelector(".vjs-nextButton")) {
-        document.querySelector(".vjs-nextButton").ontouchend = () => {
-          onQueueRandom();
-        };
-      }
-    }, 600);
-  });
+  const incrementIndex = () => {
+    setIndex((index + 1) % markersData.findSceneMarkers.count);
+  };
+  const decrementIndex = () => {
+    setIndex(index - 1);
+  };
+
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "end" }}>
-        <a href={`/scenes/${id}`}>Go to Scene</a>
-        <Button id="playNext" onClick={onQueueRandom}>
-          Next
-        </Button>
-      </div>
-      <div>
-        {scene && !loading && !VLC && (
-          <ScenePlayer
-            key="ScenePlayer"
-            hideScrubberOverride={true}
-            scene={scene}
-            initialTimestamp={timestamp}
-            sendSetTimestamp={(value) => {}}
-            autoplay={false}
-            onNext={onQueueRandom}
-            onPrevious={onQueueRandom}
-            onComplete={() => {}}
-          />
-        )}
-      </div>
+      <Player
+        sceneId={markers[index].scene.id}
+        onNext={incrementIndex}
+        onPrev={decrementIndex}
+        initialTimestamp={markers[index].seconds}
+        isMarker={true}
+      />
+    </>
+  );
+};
+
+const Player: React.FC<IPlayer> = ({
+  sceneId,
+  onNext,
+  onPrev,
+  initialTimestamp,
+  isMarker,
+}) => {
+  const [scene, setScene] = useState(null);
+  const [timestamp, setTimestamp] = useState(
+    initialTimestamp ? initialTimestamp : 0
+  );
+  const { data, loading, error } = useFindScene(sceneId);
+
+  useLayoutEffect(() => {
+    if (!loading) {
+      setScene(data?.findScene);
+
+      if (!initialTimestamp) {
+        if (data?.findScene?.files.length === 0) {
+          return;
+        }
+        const duration = data?.findScene?.files[0].duration || 0;
+        setTimestamp(Math.floor(Math.random() * duration));
+      }
+    }
+  }, [loading, data]);
+
+  return (
+    <>
+      {scene && (
+        <ScenePlayer
+          key="ScenePlayer"
+          hideScrubberOverride={true}
+          scene={scene}
+          initialTimestamp={isMarker ? initialTimestamp : timestamp}
+          autoplay={true}
+          permitLoop={true}
+          sendSetTimestamp={(value) => {}}
+          onNext={onNext}
+          onPrevious={onPrev}
+          onComplete={onNext}
+        />
+      )}
     </>
   );
 };
