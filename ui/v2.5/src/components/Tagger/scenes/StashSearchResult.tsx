@@ -7,16 +7,14 @@ import { blobToBase64 } from "base64-blob";
 import { distance } from "src/utils/hamming";
 
 import * as GQL from "src/core/generated-graphql";
-import {
-  HoverPopover,
-  Icon,
-  LoadingIndicator,
-  SuccessIcon,
-  TagSelect,
-  TruncatedText,
-  OperationButton,
-} from "src/components/Shared";
-import { FormUtils } from "src/utils";
+import { HoverPopover } from "src/components/Shared/HoverPopover";
+import { Icon } from "src/components/Shared/Icon";
+import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
+import { SuccessIcon } from "src/components/Shared/SuccessIcon";
+import { TagSelect } from "src/components/Shared/Select";
+import { TruncatedText } from "src/components/Shared/TruncatedText";
+import { OperationButton } from "src/components/Shared/OperationButton";
+import FormUtils from "src/utils/form";
 import { stringToGender } from "src/utils/gender";
 import { IScrapedScene, TaggerStateContext } from "../context";
 import { OptionalField } from "../IncludeButton";
@@ -206,6 +204,7 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
     createNewPerformer,
     linkPerformer,
     createNewStudio,
+    updateStudio,
     linkStudio,
     resolveScene,
     currentSource,
@@ -362,7 +361,7 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
       ),
       studio_id: studioID,
       cover_image: resolveField("cover_image", undefined, imgData),
-      url: resolveField("url", stashScene.url, scene.url),
+      urls: resolveField("url", stashScene.urls, scene.urls),
       tag_ids: tagIDs,
       stash_ids: stashScene.stash_ids ?? [],
       code: resolveField("code", stashScene.code, scene.code),
@@ -398,26 +397,41 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
     await saveScene(sceneCreateInput, includeStashID);
   }
 
-  function performerModalCallback(
-    toCreate?: GQL.PerformerCreateInput | undefined
+  function showPerformerModal(t: GQL.ScrapedPerformer) {
+    createPerformerModal(t, (toCreate) => {
+      if (toCreate) {
+        createNewPerformer(t, toCreate);
+      }
+    });
+  }
+
+  async function studioModalCallback(
+    studio: GQL.ScrapedStudio,
+    toCreate?: GQL.StudioCreateInput,
+    parentInput?: GQL.StudioCreateInput
   ) {
     if (toCreate) {
-      createNewPerformer(toCreate);
-    }
-  }
+      if (parentInput && studio.parent) {
+        if (toCreate.parent_id) {
+          const parentUpdateData: GQL.StudioUpdateInput = {
+            ...parentInput,
+            id: toCreate.parent_id,
+          };
+          await updateStudio(parentUpdateData);
+        } else {
+          const parentID = await createNewStudio(studio.parent, parentInput);
+          toCreate.parent_id = parentID;
+        }
+      }
 
-  function showPerformerModal(t: GQL.ScrapedPerformer) {
-    createPerformerModal(t, performerModalCallback);
-  }
-
-  function studioModalCallback(toCreate?: GQL.StudioCreateInput | undefined) {
-    if (toCreate) {
-      createNewStudio(toCreate);
+      createNewStudio(studio, toCreate);
     }
   }
 
   function showStudioModal(t: GQL.ScrapedStudio) {
-    createStudioModal(t, studioModalCallback);
+    createStudioModal(t, (toCreate, parentInput) => {
+      studioModalCallback(t, toCreate, parentInput);
+    });
   }
 
   // constants to get around dot-notation eslint rule
@@ -464,9 +478,11 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
       );
     }
 
-    const sceneTitleEl = scene.url ? (
+    const url = scene.urls?.length ? scene.urls[0] : null;
+
+    const sceneTitleEl = url ? (
       <a
-        href={scene.url}
+        href={url}
         target="_blank"
         rel="noopener noreferrer"
         className="scene-link"
@@ -560,16 +576,20 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
   };
 
   const maybeRenderURL = () => {
-    if (scene.url) {
+    if (scene.urls) {
       return (
         <div className="scene-details">
           <OptionalField
             exclude={excludedFields[fields.url]}
             setExclude={(v) => setExcludedField(fields.url, v)}
           >
-            <a href={scene.url} target="_blank" rel="noopener noreferrer">
-              {scene.url}
-            </a>
+            {scene.urls.map((url) => (
+              <div key={url}>
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  {url}
+                </a>
+              </div>
+            ))}
           </OptionalField>
         </div>
       );
@@ -656,7 +676,8 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
   );
 
   async function onCreateTag(t: GQL.ScrapedTag) {
-    const newTagID = await createNewTag(t);
+    const toCreate: GQL.TagCreateInput = { name: t.name };
+    const newTagID = await createNewTag(t, toCreate);
     if (newTagID !== undefined) {
       setTagIDs([...tagIDs, newTagID]);
     }

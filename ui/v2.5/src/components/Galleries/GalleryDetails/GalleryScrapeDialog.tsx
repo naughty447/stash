@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { StudioSelect, PerformerSelect } from "src/components/Shared";
+import {
+  StudioSelect,
+  PerformerSelect,
+  TagSelect,
+} from "src/components/Shared/Select";
 import * as GQL from "src/core/generated-graphql";
-import { TagSelect } from "src/components/Shared/Select";
 import {
   ScrapeDialog,
   ScrapeDialogRow,
@@ -15,9 +18,9 @@ import {
   useStudioCreate,
   usePerformerCreate,
   useTagCreate,
-  makePerformerCreateInput,
 } from "src/core/StashService";
-import { useToast } from "src/hooks";
+import { useToast } from "src/hooks/Toast";
+import { scrapedPerformerToCreateInput } from "src/core/performers";
 
 function renderScrapedStudio(
   result: ScrapeResult<string>,
@@ -278,7 +281,10 @@ export const GalleryScrapeDialog: React.FC<IGalleryScrapeDialogProps> = (
   if (
     [title, url, date, studio, performers, tags, details].every(
       (r) => !r.scraped
-    )
+    ) &&
+    !newStudio &&
+    newPerformers.length === 0 &&
+    newTags.length === 0
   ) {
     props.onClose();
     return <></>;
@@ -318,7 +324,7 @@ export const GalleryScrapeDialog: React.FC<IGalleryScrapeDialogProps> = (
   }
 
   async function createNewPerformer(toCreate: GQL.ScrapedPerformer) {
-    const input = makePerformerCreateInput(toCreate);
+    const input = scrapedPerformerToCreateInput(toCreate);
 
     try {
       const result = await createPerformer({

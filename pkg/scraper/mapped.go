@@ -774,7 +774,7 @@ func (r mappedResults) setKey(index int, key string, value string) mappedResults
 }
 
 func (s mappedScraper) scrapePerformer(ctx context.Context, q mappedQuery) (*models.ScrapedPerformer, error) {
-	var ret *models.ScrapedPerformer
+	var ret models.ScrapedPerformer
 
 	performerMap := s.Performer
 	if performerMap == nil {
@@ -784,24 +784,28 @@ func (s mappedScraper) scrapePerformer(ctx context.Context, q mappedQuery) (*mod
 	performerTagsMap := performerMap.Tags
 
 	results := performerMap.process(ctx, q, s.Common)
-	if len(results) > 0 {
-		ret = &models.ScrapedPerformer{}
-		results[0].apply(ret)
 
-		// now apply the tags
-		if performerTagsMap != nil {
-			logger.Debug(`Processing performer tags:`)
-			tagResults := performerTagsMap.process(ctx, q, s.Common)
+	// now apply the tags
+	if performerTagsMap != nil {
+		logger.Debug(`Processing performer tags:`)
+		tagResults := performerTagsMap.process(ctx, q, s.Common)
 
-			for _, p := range tagResults {
-				tag := &models.ScrapedTag{}
-				p.apply(tag)
-				ret.Tags = append(ret.Tags, tag)
-			}
+		for _, p := range tagResults {
+			tag := &models.ScrapedTag{}
+			p.apply(tag)
+			ret.Tags = append(ret.Tags, tag)
 		}
 	}
 
-	return ret, nil
+	if len(results) == 0 && len(ret.Tags) == 0 {
+		return nil, nil
+	}
+
+	if len(results) > 0 {
+		results[0].apply(&ret)
+	}
+
+	return &ret, nil
 }
 
 func (s mappedScraper) scrapePerformers(ctx context.Context, q mappedQuery) ([]*models.ScrapedPerformer, error) {
@@ -822,9 +826,8 @@ func (s mappedScraper) scrapePerformers(ctx context.Context, q mappedQuery) ([]*
 	return ret, nil
 }
 
-func (s mappedScraper) processScene(ctx context.Context, q mappedQuery, r mappedResult) *ScrapedScene {
-	var ret ScrapedScene
-
+// processSceneRelationships sets the relationships on the ScrapedScene. It returns true if any relationships were set.
+func (s mappedScraper) processSceneRelationships(ctx context.Context, q mappedQuery, resultIndex int, ret *ScrapedScene) bool {
 	sceneScraperConfig := s.Scene
 
 	scenePerformersMap := sceneScraperConfig.Performers
@@ -832,20 +835,49 @@ func (s mappedScraper) processScene(ctx context.Context, q mappedQuery, r mapped
 	sceneStudioMap := sceneScraperConfig.Studio
 	sceneMoviesMap := sceneScraperConfig.Movies
 
-	scenePerformerTagsMap := scenePerformersMap.Tags
+	ret.Performers = s.processPerformers(ctx, scenePerformersMap, q)
 
-	r.apply(&ret)
+	if sceneTagsMap != nil {
+		logger.Debug(`Processing scene tags:`)
 
-	// process performer tags once
-	var performerTagResults mappedResults
-	if scenePerformerTagsMap != nil {
-		performerTagResults = scenePerformerTagsMap.process(ctx, q, s.Common)
+		ret.Tags = processRelationships[models.ScrapedTag](ctx, s, sceneTagsMap, q)
 	}
 
+	if sceneStudioMap != nil {
+		logger.Debug(`Processing scene studio:`)
+		studioResults := sceneStudioMap.process(ctx, q, s.Common)
+
+		if len(studioResults) > 0 && resultIndex < len(studioResults) {
+			studio := &models.ScrapedStudio{}
+			// when doing a `search` scrape get the related studio
+			studioResults[resultIndex].apply(studio)
+			ret.Studio = studio
+		}
+	}
+
+	if sceneMoviesMap != nil {
+		logger.Debug(`Processing scene movies:`)
+		ret.Movies = processRelationships[models.ScrapedMovie](ctx, s, sceneMoviesMap, q)
+	}
+
+	return len(ret.Performers) > 0 || len(ret.Tags) > 0 || ret.Studio != nil || len(ret.Movies) > 0
+}
+
+func (s mappedScraper) processPerformers(ctx context.Context, performersMap mappedPerformerScraperConfig, q mappedQuery) []*models.ScrapedPerformer {
+	var ret []*models.ScrapedPerformer
+
 	// now apply the performers and tags
-	if scenePerformersMap.mappedConfig != nil {
-		logger.Debug(`Processing scene performers:`)
-		performerResults := scenePerformersMap.process(ctx, q, s.Common)
+	if performersMap.mappedConfig != nil {
+		logger.Debug(`Processing performers:`)
+		performerResults := performersMap.process(ctx, q, s.Common)
+
+		scenePerformerTagsMap := performersMap.Tags
+
+		// process performer tags once
+		var performerTagResults mappedResults
+		if scenePerformerTagsMap != nil {
+			performerTagResults = scenePerformerTagsMap.process(ctx, q, s.Common)
+		}
 
 		for _, p := range performerResults {
 			performer := &models.ScrapedPerformer{}
@@ -857,44 +889,25 @@ func (s mappedScraper) processScene(ctx context.Context, q mappedQuery, r mapped
 				performer.Tags = append(performer.Tags, tag)
 			}
 
-			ret.Performers = append(ret.Performers, performer)
+			ret = append(ret, performer)
 		}
 	}
 
-	if sceneTagsMap != nil {
-		logger.Debug(`Processing scene tags:`)
-		tagResults := sceneTagsMap.process(ctx, q, s.Common)
+	return ret
+}
 
-		for _, p := range tagResults {
-			tag := &models.ScrapedTag{}
-			p.apply(tag)
-			ret.Tags = append(ret.Tags, tag)
-		}
+func processRelationships[T any](ctx context.Context, s mappedScraper, relationshipMap mappedConfig, q mappedQuery) []*T {
+	var ret []*T
+
+	results := relationshipMap.process(ctx, q, s.Common)
+
+	for _, p := range results {
+		var value T
+		p.apply(&value)
+		ret = append(ret, &value)
 	}
 
-	if sceneStudioMap != nil {
-		logger.Debug(`Processing scene studio:`)
-		studioResults := sceneStudioMap.process(ctx, q, s.Common)
-
-		if len(studioResults) > 0 {
-			studio := &models.ScrapedStudio{}
-			studioResults[0].apply(studio)
-			ret.Studio = studio
-		}
-	}
-
-	if sceneMoviesMap != nil {
-		logger.Debug(`Processing scene movies:`)
-		movieResults := sceneMoviesMap.process(ctx, q, s.Common)
-
-		for _, p := range movieResults {
-			movie := &models.ScrapedMovie{}
-			p.apply(movie)
-			ret.Movies = append(ret.Movies, movie)
-		}
-	}
-
-	return &ret
+	return ret
 }
 
 func (s mappedScraper) scrapeScenes(ctx context.Context, q mappedQuery) ([]*ScrapedScene, error) {
@@ -908,17 +921,19 @@ func (s mappedScraper) scrapeScenes(ctx context.Context, q mappedQuery) ([]*Scra
 
 	logger.Debug(`Processing scenes:`)
 	results := sceneMap.process(ctx, q, s.Common)
-	for _, r := range results {
+	for i, r := range results {
 		logger.Debug(`Processing scene:`)
-		ret = append(ret, s.processScene(ctx, q, r))
+
+		var thisScene ScrapedScene
+		r.apply(&thisScene)
+		s.processSceneRelationships(ctx, q, i, &thisScene)
+		ret = append(ret, &thisScene)
 	}
 
 	return ret, nil
 }
 
 func (s mappedScraper) scrapeScene(ctx context.Context, q mappedQuery) (*ScrapedScene, error) {
-	var ret *ScrapedScene
-
 	sceneScraperConfig := s.Scene
 	sceneMap := sceneScraperConfig.mappedConfig
 	if sceneMap == nil {
@@ -927,15 +942,25 @@ func (s mappedScraper) scrapeScene(ctx context.Context, q mappedQuery) (*Scraped
 
 	logger.Debug(`Processing scene:`)
 	results := sceneMap.process(ctx, q, s.Common)
+
+	var ret ScrapedScene
 	if len(results) > 0 {
-		ret = s.processScene(ctx, q, results[0])
+		results[0].apply(&ret)
+	}
+	hasRelationships := s.processSceneRelationships(ctx, q, 0, &ret)
+
+	// #3953 - process only returns results if the non-relationship fields are
+	// populated
+	// only return if we have results or relationships
+	if len(results) > 0 || hasRelationships {
+		return &ret, nil
 	}
 
-	return ret, nil
+	return nil, nil
 }
 
 func (s mappedScraper) scrapeGallery(ctx context.Context, q mappedQuery) (*ScrapedGallery, error) {
-	var ret *ScrapedGallery
+	var ret ScrapedGallery
 
 	galleryScraperConfig := s.Gallery
 	galleryMap := galleryScraperConfig.mappedConfig
@@ -949,51 +974,55 @@ func (s mappedScraper) scrapeGallery(ctx context.Context, q mappedQuery) (*Scrap
 
 	logger.Debug(`Processing gallery:`)
 	results := galleryMap.process(ctx, q, s.Common)
-	if len(results) > 0 {
-		ret = &ScrapedGallery{}
 
-		results[0].apply(ret)
+	// now apply the performers and tags
+	if galleryPerformersMap != nil {
+		logger.Debug(`Processing gallery performers:`)
+		performerResults := galleryPerformersMap.process(ctx, q, s.Common)
 
-		// now apply the performers and tags
-		if galleryPerformersMap != nil {
-			logger.Debug(`Processing gallery performers:`)
-			performerResults := galleryPerformersMap.process(ctx, q, s.Common)
-
-			for _, p := range performerResults {
-				performer := &models.ScrapedPerformer{}
-				p.apply(performer)
-				ret.Performers = append(ret.Performers, performer)
-			}
-		}
-
-		if galleryTagsMap != nil {
-			logger.Debug(`Processing gallery tags:`)
-			tagResults := galleryTagsMap.process(ctx, q, s.Common)
-
-			for _, p := range tagResults {
-				tag := &models.ScrapedTag{}
-				p.apply(tag)
-				ret.Tags = append(ret.Tags, tag)
-			}
-		}
-
-		if galleryStudioMap != nil {
-			logger.Debug(`Processing gallery studio:`)
-			studioResults := galleryStudioMap.process(ctx, q, s.Common)
-
-			if len(studioResults) > 0 {
-				studio := &models.ScrapedStudio{}
-				studioResults[0].apply(studio)
-				ret.Studio = studio
-			}
+		for _, p := range performerResults {
+			performer := &models.ScrapedPerformer{}
+			p.apply(performer)
+			ret.Performers = append(ret.Performers, performer)
 		}
 	}
 
-	return ret, nil
+	if galleryTagsMap != nil {
+		logger.Debug(`Processing gallery tags:`)
+		tagResults := galleryTagsMap.process(ctx, q, s.Common)
+
+		for _, p := range tagResults {
+			tag := &models.ScrapedTag{}
+			p.apply(tag)
+			ret.Tags = append(ret.Tags, tag)
+		}
+	}
+
+	if galleryStudioMap != nil {
+		logger.Debug(`Processing gallery studio:`)
+		studioResults := galleryStudioMap.process(ctx, q, s.Common)
+
+		if len(studioResults) > 0 {
+			studio := &models.ScrapedStudio{}
+			studioResults[0].apply(studio)
+			ret.Studio = studio
+		}
+	}
+
+	// if no basic fields are populated, and no relationships, then return nil
+	if len(results) == 0 && len(ret.Performers) == 0 && len(ret.Tags) == 0 && ret.Studio == nil {
+		return nil, nil
+	}
+
+	if len(results) > 0 {
+		results[0].apply(&ret)
+	}
+
+	return &ret, nil
 }
 
 func (s mappedScraper) scrapeMovie(ctx context.Context, q mappedQuery) (*models.ScrapedMovie, error) {
-	var ret *models.ScrapedMovie
+	var ret models.ScrapedMovie
 
 	movieScraperConfig := s.Movie
 	movieMap := movieScraperConfig.mappedConfig
@@ -1004,21 +1033,25 @@ func (s mappedScraper) scrapeMovie(ctx context.Context, q mappedQuery) (*models.
 	movieStudioMap := movieScraperConfig.Studio
 
 	results := movieMap.process(ctx, q, s.Common)
-	if len(results) > 0 {
-		ret = &models.ScrapedMovie{}
-		results[0].apply(ret)
 
-		if movieStudioMap != nil {
-			logger.Debug(`Processing movie studio:`)
-			studioResults := movieStudioMap.process(ctx, q, s.Common)
+	if movieStudioMap != nil {
+		logger.Debug(`Processing movie studio:`)
+		studioResults := movieStudioMap.process(ctx, q, s.Common)
 
-			if len(studioResults) > 0 {
-				studio := &models.ScrapedStudio{}
-				studioResults[0].apply(studio)
-				ret.Studio = studio
-			}
+		if len(studioResults) > 0 {
+			studio := &models.ScrapedStudio{}
+			studioResults[0].apply(studio)
+			ret.Studio = studio
 		}
 	}
 
-	return ret, nil
+	if len(results) == 0 && ret.Studio == nil {
+		return nil, nil
+	}
+
+	if len(results) > 0 {
+		results[0].apply(&ret)
+	}
+
+	return &ret, nil
 }

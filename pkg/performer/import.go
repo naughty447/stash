@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stashapp/stash/pkg/hash/md5"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stashapp/stash/pkg/models/jsonschema"
@@ -18,9 +17,7 @@ import (
 type NameFinderCreatorUpdater interface {
 	NameFinderCreator
 	Update(ctx context.Context, updatedPerformer *models.Performer) error
-	UpdateTags(ctx context.Context, performerID int, tagIDs []int) error
 	UpdateImage(ctx context.Context, performerID int, image []byte) error
-	UpdateStashIDs(ctx context.Context, performerID int, stashIDs []models.StashID) error
 }
 
 type Importer struct {
@@ -32,8 +29,6 @@ type Importer struct {
 	ID        int
 	performer models.Performer
 	imageData []byte
-
-	tags []*models.Tag
 }
 
 func (i *Importer) PreImport(ctx context.Context) error {
@@ -62,7 +57,9 @@ func (i *Importer) populateTags(ctx context.Context) error {
 			return err
 		}
 
-		i.tags = tags
+		for _, p := range tags {
+			i.performer.TagIDs.Add(p.ID)
+		}
 	}
 
 	return nil
@@ -106,39 +103,23 @@ func importTags(ctx context.Context, tagWriter tag.NameFinderCreator, names []st
 func createTags(ctx context.Context, tagWriter tag.NameFinderCreator, names []string) ([]*models.Tag, error) {
 	var ret []*models.Tag
 	for _, name := range names {
-		newTag := *models.NewTag(name)
+		newTag := models.NewTag(name)
 
-		created, err := tagWriter.Create(ctx, newTag)
+		err := tagWriter.Create(ctx, newTag)
 		if err != nil {
 			return nil, err
 		}
 
-		ret = append(ret, created)
+		ret = append(ret, newTag)
 	}
 
 	return ret, nil
 }
 
 func (i *Importer) PostImport(ctx context.Context, id int) error {
-	if len(i.tags) > 0 {
-		var tagIDs []int
-		for _, t := range i.tags {
-			tagIDs = append(tagIDs, t.ID)
-		}
-		if err := i.ReaderWriter.UpdateTags(ctx, id, tagIDs); err != nil {
-			return fmt.Errorf("failed to associate tags: %v", err)
-		}
-	}
-
 	if len(i.imageData) > 0 {
 		if err := i.ReaderWriter.UpdateImage(ctx, id, i.imageData); err != nil {
 			return fmt.Errorf("error setting performer image: %v", err)
-		}
-	}
-
-	if len(i.Input.StashIDs) > 0 {
-		if err := i.ReaderWriter.UpdateStashIDs(ctx, id, i.Input.StashIDs); err != nil {
-			return fmt.Errorf("error setting stash id: %v", err)
 		}
 	}
 
@@ -150,8 +131,27 @@ func (i *Importer) Name() string {
 }
 
 func (i *Importer) FindExistingID(ctx context.Context) (*int, error) {
-	const nocase = false
-	existing, err := i.ReaderWriter.FindByNames(ctx, []string{i.Name()}, nocase)
+	// use disambiguation as well
+	performerFilter := models.PerformerFilterType{
+		Name: &models.StringCriterionInput{
+			Value:    i.Input.Name,
+			Modifier: models.CriterionModifierEquals,
+		},
+	}
+
+	if i.Input.Disambiguation != "" {
+		performerFilter.Disambiguation = &models.StringCriterionInput{
+			Value:    i.Input.Disambiguation,
+			Modifier: models.CriterionModifierEquals,
+		}
+	}
+
+	pp := 1
+	findFilter := models.FindFilterType{
+		PerPage: &pp,
+	}
+
+	existing, _, err := i.ReaderWriter.Query(ctx, &performerFilter, &findFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -186,54 +186,64 @@ func (i *Importer) Update(ctx context.Context, id int) error {
 }
 
 func performerJSONToPerformer(performerJSON jsonschema.Performer) models.Performer {
-	checksum := md5.FromString(performerJSON.Name)
-
 	newPerformer := models.Performer{
-		Name:          performerJSON.Name,
-		Checksum:      checksum,
-		Gender:        models.GenderEnum(performerJSON.Gender),
-		URL:           performerJSON.URL,
-		Ethnicity:     performerJSON.Ethnicity,
-		Country:       performerJSON.Country,
-		EyeColor:      performerJSON.EyeColor,
-		Measurements:  performerJSON.Measurements,
-		FakeTits:      performerJSON.FakeTits,
-		CareerLength:  performerJSON.CareerLength,
-		Tattoos:       performerJSON.Tattoos,
-		Piercings:     performerJSON.Piercings,
-		Aliases:       performerJSON.Aliases,
-		Twitter:       performerJSON.Twitter,
-		Instagram:     performerJSON.Instagram,
-		Details:       performerJSON.Details,
-		HairColor:     performerJSON.HairColor,
-		Favorite:      performerJSON.Favorite,
-		IgnoreAutoTag: performerJSON.IgnoreAutoTag,
-		CreatedAt:     performerJSON.CreatedAt.GetTime(),
-		UpdatedAt:     performerJSON.UpdatedAt.GetTime(),
+		Name:           performerJSON.Name,
+		Disambiguation: performerJSON.Disambiguation,
+		URL:            performerJSON.URL,
+		Ethnicity:      performerJSON.Ethnicity,
+		Country:        performerJSON.Country,
+		EyeColor:       performerJSON.EyeColor,
+		Measurements:   performerJSON.Measurements,
+		FakeTits:       performerJSON.FakeTits,
+		CareerLength:   performerJSON.CareerLength,
+		Tattoos:        performerJSON.Tattoos,
+		Piercings:      performerJSON.Piercings,
+		Aliases:        models.NewRelatedStrings(performerJSON.Aliases),
+		Twitter:        performerJSON.Twitter,
+		Instagram:      performerJSON.Instagram,
+		Details:        performerJSON.Details,
+		HairColor:      performerJSON.HairColor,
+		Favorite:       performerJSON.Favorite,
+		IgnoreAutoTag:  performerJSON.IgnoreAutoTag,
+		CreatedAt:      performerJSON.CreatedAt.GetTime(),
+		UpdatedAt:      performerJSON.UpdatedAt.GetTime(),
+
+		TagIDs:   models.NewRelatedIDs([]int{}),
+		StashIDs: models.NewRelatedStashIDs(performerJSON.StashIDs),
+	}
+
+	if performerJSON.Gender != "" {
+		v := models.GenderEnum(performerJSON.Gender)
+		newPerformer.Gender = &v
+	}
+
+	if performerJSON.Circumcised != "" {
+		v := models.CircumisedEnum(performerJSON.Circumcised)
+		newPerformer.Circumcised = &v
 	}
 
 	if performerJSON.Birthdate != "" {
-		d, err := utils.ParseDateStringAsTime(performerJSON.Birthdate)
+		date, err := models.ParseDate(performerJSON.Birthdate)
 		if err == nil {
-			newPerformer.Birthdate = &models.Date{
-				Time: d,
-			}
+			newPerformer.Birthdate = &date
 		}
 	}
 	if performerJSON.Rating != 0 {
 		newPerformer.Rating = &performerJSON.Rating
 	}
 	if performerJSON.DeathDate != "" {
-		d, err := utils.ParseDateStringAsTime(performerJSON.DeathDate)
+		date, err := models.ParseDate(performerJSON.DeathDate)
 		if err == nil {
-			newPerformer.DeathDate = &models.Date{
-				Time: d,
-			}
+			newPerformer.DeathDate = &date
 		}
 	}
 
 	if performerJSON.Weight != 0 {
 		newPerformer.Weight = &performerJSON.Weight
+	}
+
+	if performerJSON.PenisLength != 0 {
+		newPerformer.PenisLength = &performerJSON.PenisLength
 	}
 
 	if performerJSON.Height != "" {

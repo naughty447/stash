@@ -1,15 +1,17 @@
 import React from "react";
 import { useIntl } from "react-intl";
-import { getCountryByISO } from "src/utils";
+import { getCountryByISO } from "src/utils/country";
 
 interface ICountryFlag {
   country?: string | null;
   className?: string;
+  includeName?: boolean;
 }
 
-const CountryFlag: React.FC<ICountryFlag> = ({
+export const CountryFlag: React.FC<ICountryFlag> = ({
   className,
   country: isoCountry,
+  includeName,
 }) => {
   const { locale } = useIntl();
 
@@ -18,13 +20,12 @@ const CountryFlag: React.FC<ICountryFlag> = ({
   if (!isoCountry || !country) return <></>;
 
   return (
-    <span
-      className={`${
-        className ?? ""
-      } flag-icon flag-icon-${isoCountry.toLowerCase()}`}
-      title={country}
-    />
+    <>
+      {includeName ? country : ""}
+      <span
+        className={`${className ?? ""} fi fi-${isoCountry.toLowerCase()}`}
+        title={country}
+      />
+    </>
   );
 };
-
-export default CountryFlag;

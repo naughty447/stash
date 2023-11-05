@@ -1,11 +1,9 @@
 import React from "react";
 import { Button, Form } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
-import {
-  DurationInput,
-  PercentInput,
-  LoadingIndicator,
-} from "src/components/Shared";
+import { DurationInput } from "src/components/Shared/DurationInput";
+import { PercentInput } from "src/components/Shared/PercentInput";
+import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { CheckboxGroup } from "./CheckboxGroup";
 import { SettingSection } from "../SettingSection";
 import {
@@ -16,13 +14,13 @@ import {
   StringSetting,
 } from "../Inputs";
 import { SettingStateContext } from "../context";
-import { DurationUtils } from "src/utils";
+import DurationUtils from "src/utils/duration";
 import * as GQL from "src/core/generated-graphql";
 import {
   imageLightboxDisplayModeIntlMap,
   imageLightboxScrollModeIntlMap,
 } from "src/core/enums";
-import { useInterfaceLocalForage } from "src/hooks";
+import { useInterfaceLocalForage } from "src/hooks/LocalForage";
 import {
   ConnectionState,
   connectionStateLabel,
@@ -37,6 +35,14 @@ import {
   ratingSystemIntlMap,
   RatingSystemType,
 } from "src/utils/rating";
+import {
+  imageWallDirectionIntlMap,
+  ImageWallDirection,
+  defaultImageWallOptions,
+  defaultImageWallDirection,
+  defaultImageWallMargin,
+} from "src/utils/imageWall";
+import { defaultMaxOptionsShown } from "src/core/config";
 
 const allMenuItems = [
   { id: "scenes", headingID: "scenes" },
@@ -90,6 +96,24 @@ export const SettingsInterfacePanel: React.FC = () => {
       imageLightbox: {
         ...iface.imageLightbox,
         ...v,
+      },
+    });
+  }
+
+  function saveImageWallMargin(m: number) {
+    saveUI({
+      imageWallOptions: {
+        ...(ui.imageWallOptions ?? defaultImageWallOptions),
+        margin: m,
+      },
+    });
+  }
+
+  function saveImageWallDirection(d: ImageWallDirection) {
+    saveUI({
+      imageWallOptions: {
+        ...(ui.imageWallOptions ?? defaultImageWallOptions),
+        direction: d,
       },
     });
   }
@@ -250,6 +274,12 @@ export const SettingsInterfacePanel: React.FC = () => {
 
       <SettingSection headingID="config.ui.scene_player.heading">
         <BooleanSetting
+          id="enable-chromecast"
+          headingID="config.ui.scene_player.options.enable_chromecast"
+          checked={ui.enableChromecast ?? undefined}
+          onChange={(v) => saveUI({ enableChromecast: v })}
+        />
+        <BooleanSetting
           id="show-scrubber"
           headingID="config.ui.scene_player.options.show_scrubber"
           checked={iface.showScrubber ?? undefined}
@@ -266,6 +296,13 @@ export const SettingsInterfacePanel: React.FC = () => {
           headingID="config.ui.scene_player.options.track_activity"
           checked={ui.trackActivity ?? undefined}
           onChange={(v) => saveUI({ trackActivity: v })}
+        />
+        <StringSetting
+          id="vr-tag"
+          headingID="config.ui.scene_player.options.vr_tag.heading"
+          subHeadingID="config.ui.scene_player.options.vr_tag.description"
+          value={ui.vrTag ?? undefined}
+          onChange={(v) => saveUI({ vrTag: v })}
         />
         <ModalSetting<number>
           id="ignore-interval"
@@ -355,6 +392,31 @@ export const SettingsInterfacePanel: React.FC = () => {
         />
       </SettingSection>
 
+      <SettingSection headingID="config.ui.image_wall.heading">
+        <NumberSetting
+          headingID="config.ui.image_wall.margin"
+          subHeadingID="dialogs.imagewall.margin_desc"
+          value={ui.imageWallOptions?.margin ?? defaultImageWallMargin}
+          onChange={(v) => saveImageWallMargin(v)}
+        />
+
+        <SelectSetting
+          id="image_wall_direction"
+          headingID="config.ui.image_wall.direction"
+          subHeadingID="dialogs.imagewall.direction.description"
+          value={ui.imageWallOptions?.direction ?? defaultImageWallDirection}
+          onChange={(v) => saveImageWallDirection(v as ImageWallDirection)}
+        >
+          {Array.from(imageWallDirectionIntlMap.entries()).map((v) => (
+            <option key={v[0]} value={v[0]}>
+              {intl.formatMessage({
+                id: v[1],
+              })}
+            </option>
+          ))}
+        </SelectSetting>
+      </SettingSection>
+
       <SettingSection headingID="config.ui.image_lightbox.heading">
         <NumberSetting
           headingID="config.ui.slideshow_delay.heading"
@@ -432,6 +494,64 @@ export const SettingsInterfacePanel: React.FC = () => {
         />
       </SettingSection>
 
+      <SettingSection headingID="config.ui.detail.heading">
+        <div className="setting-group">
+          <div className="setting">
+            <div>
+              <h3>
+                {intl.formatMessage({
+                  id: "config.ui.detail.enable_background_image.heading",
+                })}
+              </h3>
+              <div className="sub-heading">
+                {intl.formatMessage({
+                  id: "config.ui.detail.enable_background_image.description",
+                })}
+              </div>
+            </div>
+            <div />
+          </div>
+          <BooleanSetting
+            id="enableMovieBackgroundImage"
+            headingID="movie"
+            checked={ui.enableMovieBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableMovieBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enablePerformerBackgroundImage"
+            headingID="performer"
+            checked={ui.enablePerformerBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enablePerformerBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enableStudioBackgroundImage"
+            headingID="studio"
+            checked={ui.enableStudioBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableStudioBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enableTagBackgroundImage"
+            headingID="tag"
+            checked={ui.enableTagBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableTagBackgroundImage: v })}
+          />
+        </div>
+        <BooleanSetting
+          id="show_all_details"
+          headingID="config.ui.detail.show_all_details.heading"
+          subHeadingID="config.ui.detail.show_all_details.description"
+          checked={ui.showAllDetails ?? true}
+          onChange={(v) => saveUI({ showAllDetails: v })}
+        />
+        <BooleanSetting
+          id="compact_expanded_details"
+          headingID="config.ui.detail.compact_expanded_details.heading"
+          subHeadingID="config.ui.detail.compact_expanded_details.description"
+          checked={ui.compactExpandedDetails ?? undefined}
+          onChange={(v) => saveUI({ compactExpandedDetails: v })}
+        />
+      </SettingSection>
+
       <SettingSection headingID="config.ui.editing.heading">
         <div className="setting-group">
           <div className="setting">
@@ -488,7 +608,26 @@ export const SettingsInterfacePanel: React.FC = () => {
               })
             }
           />
+          <BooleanSetting
+            id="disableDropdownCreate_movie"
+            headingID="movie"
+            checked={iface.disableDropdownCreate?.movie ?? undefined}
+            onChange={(v) =>
+              saveInterface({
+                disableDropdownCreate: {
+                  ...iface.disableDropdownCreate,
+                  movie: v,
+                },
+              })
+            }
+          />
         </div>
+        <NumberSetting
+          id="max_options_shown"
+          headingID="config.ui.editing.max_options_shown.label"
+          value={ui.maxOptionsShown ?? defaultMaxOptionsShown}
+          onChange={(v) => saveUI({ maxOptionsShown: v })}
+        />
         <SelectSetting
           id="rating_system"
           headingID="config.ui.editing.rating_system.type.label"
@@ -694,6 +833,14 @@ export const SettingsInterfacePanel: React.FC = () => {
           subHeadingID="config.ui.funscript_offset.description"
           value={iface.funscriptOffset ?? undefined}
           onChange={(v) => saveInterface({ funscriptOffset: v })}
+        />
+
+        <BooleanSetting
+          id="use-stash-hosted-funscript"
+          headingID="config.ui.use_stash_hosted_funscript.heading"
+          subHeadingID="config.ui.use_stash_hosted_funscript.description"
+          checked={iface.useStashHostedFunscript ?? false}
+          onChange={(v) => saveInterface({ useStashHostedFunscript: v })}
         />
       </SettingSection>
     </>

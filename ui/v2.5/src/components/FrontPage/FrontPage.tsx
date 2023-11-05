@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useConfigureUI } from "src/core/StashService";
-import { LoadingIndicator } from "src/components/Shared";
+import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { Button } from "react-bootstrap";
 import { FrontPageConfig } from "./FrontPageConfig";
-import { useToast } from "src/hooks";
+import { useToast } from "src/hooks/Toast";
 import { Control } from "./Control";
 import { ConfigurationContext } from "src/hooks/Config";
 import {
@@ -12,6 +12,7 @@ import {
   generateDefaultFrontPageContent,
   IUIConfig,
 } from "src/core/config";
+import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
 
 const FrontPage: React.FC = () => {
   const intl = useIntl();
@@ -23,6 +24,8 @@ const FrontPage: React.FC = () => {
   const [saveUI] = useConfigureUI();
 
   const { configuration, loading } = React.useContext(ConfigurationContext);
+
+  useScrollToTopOnMount();
 
   async function onUpdateConfig(content?: FrontPageContent[]) {
     setIsEditing(false);

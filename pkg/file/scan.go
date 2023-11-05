@@ -14,6 +14,7 @@ import (
 	"github.com/remeh/sizedwaitgroup"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/txn"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 const (
@@ -214,25 +215,17 @@ func (s *scanJob) queueFileFunc(ctx context.Context, f FS, zipFile *scanFile) fs
 			return fmt.Errorf("reading info for %q: %w", path, err)
 		}
 
-		var size int64
-
-		// #2196/#3042 - replace size with target size if file is a symlink
-		if info.Mode()&os.ModeSymlink == os.ModeSymlink {
-			targetInfo, err := f.Stat(path)
-			if err != nil {
-				return fmt.Errorf("reading info for symlink %q: %w", path, err)
-			}
-			size = targetInfo.Size()
-		} else {
-			size = info.Size()
-		}
-
 		if !s.acceptEntry(ctx, path, info) {
 			if info.IsDir() {
 				return fs.SkipDir
 			}
 
 			return nil
+		}
+
+		size, err := getFileSize(f, path, info)
+		if err != nil {
+			return err
 		}
 
 		ff := scanFile{
@@ -291,6 +284,19 @@ func (s *scanJob) queueFileFunc(ctx context.Context, f FS, zipFile *scanFile) fs
 
 		return nil
 	}
+}
+
+func getFileSize(f FS, path string, info fs.FileInfo) (int64, error) {
+	// #2196/#3042 - replace size with target size if file is a symlink
+	if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+		targetInfo, err := f.Stat(path)
+		if err != nil {
+			return 0, fmt.Errorf("reading info for symlink %q: %w", path, err)
+		}
+		return targetInfo.Size(), nil
+	}
+
+	return info.Size(), nil
 }
 
 func (s *scanJob) acceptEntry(ctx context.Context, path string, info fs.FileInfo) bool {
@@ -484,6 +490,15 @@ func (s *scanJob) handleFolder(ctx context.Context, file scanFile) error {
 }
 
 func (s *scanJob) onNewFolder(ctx context.Context, file scanFile) (*Folder, error) {
+	renamed, err := s.handleFolderRename(ctx, file)
+	if err != nil {
+		return nil, err
+	}
+
+	if renamed != nil {
+		return renamed, nil
+	}
+
 	now := time.Now()
 
 	toCreate := &Folder{
@@ -507,12 +522,11 @@ func (s *scanJob) onNewFolder(ctx context.Context, file scanFile) (*Folder, erro
 		}
 	}
 
-	txn.AddPostCommitHook(ctx, func(ctx context.Context) error {
+	txn.AddPostCommitHook(ctx, func(ctx context.Context) {
 		// log at the end so that if anything fails above due to a locked database
 		// error and the transaction must be retried, then we shouldn't get multiple
 		// logs of the same thing.
 		logger.Infof("%s doesn't exist. Creating new folder entry...", file.Path)
-		return nil
 	})
 
 	if err := s.Repository.FolderStore.Create(ctx, toCreate); err != nil {
@@ -522,14 +536,66 @@ func (s *scanJob) onNewFolder(ctx context.Context, file scanFile) (*Folder, erro
 	return toCreate, nil
 }
 
+func (s *scanJob) handleFolderRename(ctx context.Context, file scanFile) (*Folder, error) {
+	// ignore folders in zip files
+	if file.ZipFileID != nil {
+		return nil, nil
+	}
+
+	// check if the folder was moved from elsewhere
+	renamedFrom, err := s.detectFolderMove(ctx, file)
+	if err != nil {
+		return nil, fmt.Errorf("detecting folder move: %w", err)
+	}
+
+	if renamedFrom == nil {
+		return nil, nil
+	}
+
+	// if the folder was moved, update the existing folder
+	logger.Infof("%s moved to %s. Updating path...", renamedFrom.Path, file.Path)
+	renamedFrom.Path = file.Path
+
+	// update the parent folder ID
+	// find the parent folder
+	parentFolderID, err := s.getFolderID(ctx, filepath.Dir(file.Path))
+	if err != nil {
+		return nil, fmt.Errorf("getting parent folder for %q: %w", file.Path, err)
+	}
+
+	renamedFrom.ParentFolderID = parentFolderID
+
+	if err := s.Repository.FolderStore.Update(ctx, renamedFrom); err != nil {
+		return nil, fmt.Errorf("updating folder for rename %q: %w", renamedFrom.Path, err)
+	}
+
+	return renamedFrom, nil
+}
+
 func (s *scanJob) onExistingFolder(ctx context.Context, f scanFile, existing *Folder) (*Folder, error) {
-	// check if the mod time is changed
+	update := false
+
+	// update if mod time is changed
 	entryModTime := f.ModTime
-
 	if !entryModTime.Equal(existing.ModTime) {
-		// update entry in store
 		existing.ModTime = entryModTime
+		update = true
+	}
 
+	// update if zip file ID has changed
+	fZfID := f.ZipFileID
+	existingZfID := existing.ZipFileID
+	if fZfID != existingZfID {
+		if fZfID == nil {
+			existing.ZipFileID = nil
+			update = true
+		} else if existingZfID == nil || *fZfID != *existingZfID {
+			existing.ZipFileID = fZfID
+			update = true
+		}
+	}
+
+	if update {
 		var err error
 		if err = s.Repository.FolderStore.Update(ctx, existing); err != nil {
 			return nil, fmt.Errorf("updating folder %q: %w", f.Path, err)
@@ -574,7 +640,7 @@ func (s *scanJob) handleFile(ctx context.Context, f scanFile) error {
 		// scan zip files with a different context that is not cancellable
 		// cancelling while scanning zip file contents results in the scan
 		// contents being partially completed
-		zipCtx := context.Background()
+		zipCtx := utils.ValueOnlyContext{Context: ctx}
 
 		if err := s.scanZipFile(zipCtx, f); err != nil {
 			logger.Errorf("Error scanning zip file %q: %v", f.Path, err)
@@ -753,7 +819,14 @@ func (s *scanJob) handleRename(ctx context.Context, f File, fp []Fingerprint) (F
 
 	var missing []File
 
+	fZipID := f.Base().ZipFileID
 	for _, other := range others {
+		// if file is from a zip file, then only rename if both files are from the same zip file
+		otherZipID := other.Base().ZipFileID
+		if otherZipID != nil && (fZipID == nil || *otherZipID != *fZipID) {
+			continue
+		}
+
 		// if file does not exist, then update it to the new path
 		fs, err := s.getFileFS(other.Base())
 		if err != nil {
@@ -796,6 +869,12 @@ func (s *scanJob) handleRename(ctx context.Context, f File, fp []Fingerprint) (F
 	if err := s.withTxn(ctx, func(ctx context.Context) error {
 		if err := s.Repository.Update(ctx, f); err != nil {
 			return fmt.Errorf("updating file for rename %q: %w", fBase.Path, err)
+		}
+
+		if s.isZipFile(fBase.Basename) {
+			if err := TransferZipFolderHierarchy(ctx, s.Repository.FolderStore, fBase.ID, otherBase.Path, fBase.Path); err != nil {
+				return fmt.Errorf("moving folder hierarchy for renamed zip file %q: %w", fBase.Path, err)
+			}
 		}
 
 		if err := s.fireHandlers(ctx, f, other); err != nil {

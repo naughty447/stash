@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,73 +18,81 @@ import (
 	"gopkg.in/guregu/null.v4/zero"
 )
 
-const performerTable = "performers"
-const performerIDColumn = "performer_id"
-const performersTagsTable = "performers_tags"
-const performersImageTable = "performers_image" // performer cover image
+const (
+	performerTable         = "performers"
+	performerIDColumn      = "performer_id"
+	performersAliasesTable = "performer_aliases"
+	performerAliasColumn   = "alias"
+	performersTagsTable    = "performers_tags"
+
+	performerImageBlobColumn = "image_blob"
+)
 
 type performerRow struct {
-	ID           int                    `db:"id" goqu:"skipinsert"`
-	Checksum     string                 `db:"checksum"`
-	Name         zero.String            `db:"name"`
-	Gender       zero.String            `db:"gender"`
-	URL          zero.String            `db:"url"`
-	Twitter      zero.String            `db:"twitter"`
-	Instagram    zero.String            `db:"instagram"`
-	Birthdate    models.SQLiteDate      `db:"birthdate"`
-	Ethnicity    zero.String            `db:"ethnicity"`
-	Country      zero.String            `db:"country"`
-	EyeColor     zero.String            `db:"eye_color"`
-	Height       null.Int               `db:"height"`
-	Measurements zero.String            `db:"measurements"`
-	FakeTits     zero.String            `db:"fake_tits"`
-	CareerLength zero.String            `db:"career_length"`
-	Tattoos      zero.String            `db:"tattoos"`
-	Piercings    zero.String            `db:"piercings"`
-	Aliases      zero.String            `db:"aliases"`
-	Favorite     sql.NullBool           `db:"favorite"`
-	CreatedAt    models.SQLiteTimestamp `db:"created_at"`
-	UpdatedAt    models.SQLiteTimestamp `db:"updated_at"`
+	ID            int         `db:"id" goqu:"skipinsert"`
+	Name          null.String `db:"name"` // TODO: make schema non-nullable
+	Disambigation zero.String `db:"disambiguation"`
+	Gender        zero.String `db:"gender"`
+	URL           zero.String `db:"url"`
+	Twitter       zero.String `db:"twitter"`
+	Instagram     zero.String `db:"instagram"`
+	Birthdate     NullDate    `db:"birthdate"`
+	Ethnicity     zero.String `db:"ethnicity"`
+	Country       zero.String `db:"country"`
+	EyeColor      zero.String `db:"eye_color"`
+	Height        null.Int    `db:"height"`
+	Measurements  zero.String `db:"measurements"`
+	FakeTits      zero.String `db:"fake_tits"`
+	PenisLength   null.Float  `db:"penis_length"`
+	Circumcised   zero.String `db:"circumcised"`
+	CareerLength  zero.String `db:"career_length"`
+	Tattoos       zero.String `db:"tattoos"`
+	Piercings     zero.String `db:"piercings"`
+	Favorite      bool        `db:"favorite"`
+	CreatedAt     Timestamp   `db:"created_at"`
+	UpdatedAt     Timestamp   `db:"updated_at"`
 	// expressed as 1-100
-	Rating        null.Int          `db:"rating"`
-	Details       zero.String       `db:"details"`
-	DeathDate     models.SQLiteDate `db:"death_date"`
-	HairColor     zero.String       `db:"hair_color"`
-	Weight        null.Int          `db:"weight"`
-	IgnoreAutoTag bool              `db:"ignore_auto_tag"`
+	Rating        null.Int    `db:"rating"`
+	Details       zero.String `db:"details"`
+	DeathDate     NullDate    `db:"death_date"`
+	HairColor     zero.String `db:"hair_color"`
+	Weight        null.Int    `db:"weight"`
+	IgnoreAutoTag bool        `db:"ignore_auto_tag"`
+
+	// not used in resolution or updates
+	ImageBlob zero.String `db:"image_blob"`
 }
 
 func (r *performerRow) fromPerformer(o models.Performer) {
 	r.ID = o.ID
-	r.Checksum = o.Checksum
-	r.Name = zero.StringFrom(o.Name)
-	if o.Gender.IsValid() {
+	r.Name = null.StringFrom(o.Name)
+	r.Disambigation = zero.StringFrom(o.Disambiguation)
+	if o.Gender != nil && o.Gender.IsValid() {
 		r.Gender = zero.StringFrom(o.Gender.String())
 	}
 	r.URL = zero.StringFrom(o.URL)
 	r.Twitter = zero.StringFrom(o.Twitter)
 	r.Instagram = zero.StringFrom(o.Instagram)
-	if o.Birthdate != nil {
-		_ = r.Birthdate.Scan(o.Birthdate.Time)
-	}
+	r.Birthdate = NullDateFromDatePtr(o.Birthdate)
 	r.Ethnicity = zero.StringFrom(o.Ethnicity)
 	r.Country = zero.StringFrom(o.Country)
 	r.EyeColor = zero.StringFrom(o.EyeColor)
 	r.Height = intFromPtr(o.Height)
 	r.Measurements = zero.StringFrom(o.Measurements)
 	r.FakeTits = zero.StringFrom(o.FakeTits)
+	r.PenisLength = null.FloatFromPtr(o.PenisLength)
+	if o.Circumcised != nil && o.Circumcised.IsValid() {
+		r.Circumcised = zero.StringFrom(o.Circumcised.String())
+	}
 	r.CareerLength = zero.StringFrom(o.CareerLength)
 	r.Tattoos = zero.StringFrom(o.Tattoos)
 	r.Piercings = zero.StringFrom(o.Piercings)
-	r.Aliases = zero.StringFrom(o.Aliases)
-	r.Favorite = sql.NullBool{Bool: o.Favorite, Valid: true}
-	r.CreatedAt = models.SQLiteTimestamp{Timestamp: o.CreatedAt}
-	r.UpdatedAt = models.SQLiteTimestamp{Timestamp: o.UpdatedAt}
+	r.Favorite = o.Favorite
+	r.CreatedAt = Timestamp{Timestamp: o.CreatedAt}
+	r.UpdatedAt = Timestamp{Timestamp: o.UpdatedAt}
 	r.Rating = intFromPtr(o.Rating)
 	r.Details = zero.StringFrom(o.Details)
-	if o.DeathDate != nil {
-		_ = r.DeathDate.Scan(o.DeathDate.Time)
-	}
+	r.DeathDate = NullDateFromDatePtr(o.DeathDate)
 	r.HairColor = zero.StringFrom(o.HairColor)
 	r.Weight = intFromPtr(o.Weight)
 	r.IgnoreAutoTag = o.IgnoreAutoTag
@@ -91,27 +100,26 @@ func (r *performerRow) fromPerformer(o models.Performer) {
 
 func (r *performerRow) resolve() *models.Performer {
 	ret := &models.Performer{
-		ID:           r.ID,
-		Checksum:     r.Checksum,
-		Name:         r.Name.String,
-		Gender:       models.GenderEnum(r.Gender.String),
-		URL:          r.URL.String,
-		Twitter:      r.Twitter.String,
-		Instagram:    r.Instagram.String,
-		Birthdate:    r.Birthdate.DatePtr(),
-		Ethnicity:    r.Ethnicity.String,
-		Country:      r.Country.String,
-		EyeColor:     r.EyeColor.String,
-		Height:       nullIntPtr(r.Height),
-		Measurements: r.Measurements.String,
-		FakeTits:     r.FakeTits.String,
-		CareerLength: r.CareerLength.String,
-		Tattoos:      r.Tattoos.String,
-		Piercings:    r.Piercings.String,
-		Aliases:      r.Aliases.String,
-		Favorite:     r.Favorite.Bool,
-		CreatedAt:    r.CreatedAt.Timestamp,
-		UpdatedAt:    r.UpdatedAt.Timestamp,
+		ID:             r.ID,
+		Name:           r.Name.String,
+		Disambiguation: r.Disambigation.String,
+		URL:            r.URL.String,
+		Twitter:        r.Twitter.String,
+		Instagram:      r.Instagram.String,
+		Birthdate:      r.Birthdate.DatePtr(),
+		Ethnicity:      r.Ethnicity.String,
+		Country:        r.Country.String,
+		EyeColor:       r.EyeColor.String,
+		Height:         nullIntPtr(r.Height),
+		Measurements:   r.Measurements.String,
+		FakeTits:       r.FakeTits.String,
+		PenisLength:    nullFloatPtr(r.PenisLength),
+		CareerLength:   r.CareerLength.String,
+		Tattoos:        r.Tattoos.String,
+		Piercings:      r.Piercings.String,
+		Favorite:       r.Favorite,
+		CreatedAt:      r.CreatedAt.Timestamp,
+		UpdatedAt:      r.UpdatedAt.Timestamp,
 		// expressed as 1-100
 		Rating:        nullIntPtr(r.Rating),
 		Details:       r.Details.String,
@@ -119,6 +127,16 @@ func (r *performerRow) resolve() *models.Performer {
 		HairColor:     r.HairColor.String,
 		Weight:        nullIntPtr(r.Weight),
 		IgnoreAutoTag: r.IgnoreAutoTag,
+	}
+
+	if r.Gender.ValueOrZero() != "" {
+		v := models.GenderEnum(r.Gender.String)
+		ret.Gender = &v
+	}
+
+	if r.Circumcised.ValueOrZero() != "" {
+		v := models.CircumisedEnum(r.Circumcised.String)
+		ret.Circumcised = &v
 	}
 
 	return ret
@@ -129,29 +147,30 @@ type performerRowRecord struct {
 }
 
 func (r *performerRowRecord) fromPartial(o models.PerformerPartial) {
-	r.setNullString("checksum", o.Checksum)
-	r.setNullString("name", o.Name)
+	r.setString("name", o.Name)
+	r.setNullString("disambiguation", o.Disambiguation)
 	r.setNullString("gender", o.Gender)
 	r.setNullString("url", o.URL)
 	r.setNullString("twitter", o.Twitter)
 	r.setNullString("instagram", o.Instagram)
-	r.setSQLiteDate("birthdate", o.Birthdate)
+	r.setNullDate("birthdate", o.Birthdate)
 	r.setNullString("ethnicity", o.Ethnicity)
 	r.setNullString("country", o.Country)
 	r.setNullString("eye_color", o.EyeColor)
 	r.setNullInt("height", o.Height)
 	r.setNullString("measurements", o.Measurements)
 	r.setNullString("fake_tits", o.FakeTits)
+	r.setNullFloat64("penis_length", o.PenisLength)
+	r.setNullString("circumcised", o.Circumcised)
 	r.setNullString("career_length", o.CareerLength)
 	r.setNullString("tattoos", o.Tattoos)
 	r.setNullString("piercings", o.Piercings)
-	r.setNullString("aliases", o.Aliases)
 	r.setBool("favorite", o.Favorite)
-	r.setSQLiteTimestamp("created_at", o.CreatedAt)
-	r.setSQLiteTimestamp("updated_at", o.UpdatedAt)
+	r.setTimestamp("created_at", o.CreatedAt)
+	r.setTimestamp("updated_at", o.UpdatedAt)
 	r.setNullInt("rating", o.Rating)
 	r.setNullString("details", o.Details)
-	r.setSQLiteDate("death_date", o.DeathDate)
+	r.setNullDate("death_date", o.DeathDate)
 	r.setNullString("hair_color", o.HairColor)
 	r.setNullInt("weight", o.Weight)
 	r.setBool("ignore_auto_tag", o.IgnoreAutoTag)
@@ -159,18 +178,31 @@ func (r *performerRowRecord) fromPartial(o models.PerformerPartial) {
 
 type PerformerStore struct {
 	repository
+	blobJoinQueryBuilder
 
 	tableMgr *table
 }
 
-func NewPerformerStore() *PerformerStore {
+func NewPerformerStore(blobStore *BlobStore) *PerformerStore {
 	return &PerformerStore{
 		repository: repository{
 			tableName: performerTable,
 			idColumn:  idColumn,
 		},
+		blobJoinQueryBuilder: blobJoinQueryBuilder{
+			blobStore: blobStore,
+			joinTable: performerTable,
+		},
 		tableMgr: performerTableMgr,
 	}
+}
+
+func (qb *PerformerStore) table() exp.IdentifierExpression {
+	return qb.tableMgr.table
+}
+
+func (qb *PerformerStore) selectDataset() *goqu.SelectDataset {
+	return dialect.From(qb.table()).Select(qb.table().All())
 }
 
 func (qb *PerformerStore) Create(ctx context.Context, newObject *models.Performer) error {
@@ -182,7 +214,25 @@ func (qb *PerformerStore) Create(ctx context.Context, newObject *models.Performe
 		return err
 	}
 
-	updated, err := qb.Find(ctx, id)
+	if newObject.Aliases.Loaded() {
+		if err := performersAliasesTableMgr.insertJoins(ctx, id, newObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.TagIDs.Loaded() {
+		if err := performersTagsTableMgr.insertJoins(ctx, id, newObject.TagIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if newObject.StashIDs.Loaded() {
+		if err := performersStashIDsTableMgr.insertJoins(ctx, id, newObject.StashIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	updated, err := qb.find(ctx, id)
 	if err != nil {
 		return fmt.Errorf("finding after create: %w", err)
 	}
@@ -192,14 +242,14 @@ func (qb *PerformerStore) Create(ctx context.Context, newObject *models.Performe
 	return nil
 }
 
-func (qb *PerformerStore) UpdatePartial(ctx context.Context, id int, updatedObject models.PerformerPartial) (*models.Performer, error) {
+func (qb *PerformerStore) UpdatePartial(ctx context.Context, id int, partial models.PerformerPartial) (*models.Performer, error) {
 	r := performerRowRecord{
 		updateRecord{
 			Record: make(exp.Record),
 		},
 	}
 
-	r.fromPartial(updatedObject)
+	r.fromPartial(partial)
 
 	if len(r.Record) > 0 {
 		if err := qb.tableMgr.updateByID(ctx, id, r.Record); err != nil {
@@ -207,7 +257,24 @@ func (qb *PerformerStore) UpdatePartial(ctx context.Context, id int, updatedObje
 		}
 	}
 
-	return qb.Find(ctx, id)
+	if partial.Aliases != nil {
+		if err := performersAliasesTableMgr.modifyJoins(ctx, id, partial.Aliases.Values, partial.Aliases.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	if partial.TagIDs != nil {
+		if err := performersTagsTableMgr.modifyJoins(ctx, id, partial.TagIDs.IDs, partial.TagIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+	if partial.StashIDs != nil {
+		if err := performersStashIDsTableMgr.modifyJoins(ctx, id, partial.StashIDs.StashIDs, partial.StashIDs.Mode); err != nil {
+			return nil, err
+		}
+	}
+
+	return qb.find(ctx, id)
 }
 
 func (qb *PerformerStore) Update(ctx context.Context, updatedObject *models.Performer) error {
@@ -218,45 +285,64 @@ func (qb *PerformerStore) Update(ctx context.Context, updatedObject *models.Perf
 		return err
 	}
 
+	if updatedObject.Aliases.Loaded() {
+		if err := performersAliasesTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.Aliases.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.TagIDs.Loaded() {
+		if err := performersTagsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.TagIDs.List()); err != nil {
+			return err
+		}
+	}
+
+	if updatedObject.StashIDs.Loaded() {
+		if err := performersStashIDsTableMgr.replaceJoins(ctx, updatedObject.ID, updatedObject.StashIDs.List()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func (qb *PerformerStore) Destroy(ctx context.Context, id int) error {
+	// must handle image checksums manually
+	if err := qb.destroyImage(ctx, id); err != nil {
+		return err
+	}
+
 	return qb.destroyExisting(ctx, []int{id})
 }
 
-func (qb *PerformerStore) table() exp.IdentifierExpression {
-	return qb.tableMgr.table
-}
-
-func (qb *PerformerStore) selectDataset() *goqu.SelectDataset {
-	return dialect.From(qb.table()).Select(qb.table().All())
-}
-
+// returns nil, nil if not found
 func (qb *PerformerStore) Find(ctx context.Context, id int) (*models.Performer, error) {
-	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
-
-	ret, err := qb.get(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("getting scene by id %d: %w", id, err)
+	ret, err := qb.find(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
 	}
-
-	return ret, nil
+	return ret, err
 }
 
 func (qb *PerformerStore) FindMany(ctx context.Context, ids []int) ([]*models.Performer, error) {
 	tableMgr := performerTableMgr
-	q := goqu.Select("*").From(tableMgr.table).Where(tableMgr.byIDInts(ids...))
-	unsorted, err := qb.getMany(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-
 	ret := make([]*models.Performer, len(ids))
 
-	for _, s := range unsorted {
-		i := intslice.IntIndex(ids, s.ID)
-		ret[i] = s
+	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
+		q := goqu.Select("*").From(tableMgr.table).Where(tableMgr.byIDInts(batch...))
+		unsorted, err := qb.getMany(ctx, q)
+		if err != nil {
+			return err
+		}
+
+		for _, s := range unsorted {
+			i := intslice.IntIndex(ids, s.ID)
+			ret[i] = s
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	for i := range ret {
@@ -268,6 +354,31 @@ func (qb *PerformerStore) FindMany(ctx context.Context, ids []int) ([]*models.Pe
 	return ret, nil
 }
 
+// returns nil, sql.ErrNoRows if not found
+func (qb *PerformerStore) find(ctx context.Context, id int) (*models.Performer, error) {
+	q := qb.selectDataset().Where(qb.tableMgr.byID(id))
+
+	ret, err := qb.get(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (qb *PerformerStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Performer, error) {
+	table := qb.table()
+
+	q := qb.selectDataset().Where(
+		table.Col(idColumn).Eq(
+			sq,
+		),
+	)
+
+	return qb.getMany(ctx, q)
+}
+
+// returns nil, sql.ErrNoRows if not found
 func (qb *PerformerStore) get(ctx context.Context, q *goqu.SelectDataset) (*models.Performer, error) {
 	ret, err := qb.getMany(ctx, q)
 	if err != nil {
@@ -299,18 +410,6 @@ func (qb *PerformerStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([
 	}
 
 	return ret, nil
-}
-
-func (qb *PerformerStore) findBySubquery(ctx context.Context, sq *goqu.SelectDataset) ([]*models.Performer, error) {
-	table := qb.table()
-
-	q := qb.selectDataset().Where(
-		table.Col(idColumn).Eq(
-			sq,
-		),
-	)
-
-	return qb.getMany(ctx, q)
 }
 
 func (qb *PerformerStore) FindBySceneID(ctx context.Context, sceneID int) ([]*models.Performer, error) {
@@ -397,14 +496,19 @@ func (qb *PerformerStore) QueryForAutoTag(ctx context.Context, words []string) (
 	// TODO - Query needs to be changed to support queries of this type, and
 	// this method should be removed
 	table := qb.table()
-	sq := dialect.From(table).Select(table.Col(idColumn)).Where()
+	sq := dialect.From(table).Select(table.Col(idColumn))
+	// TODO - disabled alias matching until we get finer control over it
+	// .LeftJoin(
+	// 	performersAliasesJoinTable,
+	// 	goqu.On(performersAliasesJoinTable.Col(performerIDColumn).Eq(table.Col(idColumn))),
+	// )
 
 	var whereClauses []exp.Expression
 
 	for _, w := range words {
 		whereClauses = append(whereClauses, table.Col("name").Like(w+"%"))
-		// TODO - commented out until alias matching works both ways
-		// whereClauses = append(whereClauses, table.Col("aliases").Like(w+"%")
+		// TODO - see above
+		// whereClauses = append(whereClauses, performersAliasesJoinTable.Col("alias").Like(w+"%"))
 	}
 
 	sq = sq.Where(
@@ -483,6 +587,7 @@ func (qb *PerformerStore) makeFilter(ctx context.Context, filter *models.Perform
 
 	const tableName = performerTable
 	query.handleCriterion(ctx, stringCriterionHandler(filter.Name, tableName+".name"))
+	query.handleCriterion(ctx, stringCriterionHandler(filter.Disambiguation, tableName+".disambiguation"))
 	query.handleCriterion(ctx, stringCriterionHandler(filter.Details, tableName+".details"))
 
 	query.handleCriterion(ctx, boolCriterionHandler(filter.FilterFavorites, tableName+".favorite", nil))
@@ -518,6 +623,15 @@ func (qb *PerformerStore) makeFilter(ctx context.Context, filter *models.Perform
 
 	query.handleCriterion(ctx, stringCriterionHandler(filter.Measurements, tableName+".measurements"))
 	query.handleCriterion(ctx, stringCriterionHandler(filter.FakeTits, tableName+".fake_tits"))
+	query.handleCriterion(ctx, floatCriterionHandler(filter.PenisLength, tableName+".penis_length", nil))
+
+	query.handleCriterion(ctx, criterionHandlerFunc(func(ctx context.Context, f *filterBuilder) {
+		if circumcised := filter.Circumcised; circumcised != nil {
+			v := utils.StringerSliceToStringSlice(circumcised.Value)
+			enumCriterionHandler(circumcised.Modifier, v, tableName+".circumcised")(ctx, f)
+		}
+	}))
+
 	query.handleCriterion(ctx, stringCriterionHandler(filter.CareerLength, tableName+".career_length"))
 	query.handleCriterion(ctx, stringCriterionHandler(filter.Tattoos, tableName+".tattoos"))
 	query.handleCriterion(ctx, stringCriterionHandler(filter.Piercings, tableName+".piercings"))
@@ -540,17 +654,19 @@ func (qb *PerformerStore) makeFilter(ctx context.Context, filter *models.Perform
 		parentIDCol:       "performers.id",
 	})
 
-	// TODO - need better handling of aliases
-	query.handleCriterion(ctx, stringCriterionHandler(filter.Aliases, tableName+".aliases"))
+	query.handleCriterion(ctx, performerAliasCriterionHandler(qb, filter.Aliases))
 
 	query.handleCriterion(ctx, performerTagsCriterionHandler(qb, filter.Tags))
 
 	query.handleCriterion(ctx, performerStudiosCriterionHandler(qb, filter.Studios))
 
+	query.handleCriterion(ctx, performerAppearsWithCriterionHandler(qb, filter.Performers))
+
 	query.handleCriterion(ctx, performerTagCountCriterionHandler(qb, filter.TagCount))
 	query.handleCriterion(ctx, performerSceneCountCriterionHandler(qb, filter.SceneCount))
 	query.handleCriterion(ctx, performerImageCountCriterionHandler(qb, filter.ImageCount))
 	query.handleCriterion(ctx, performerGalleryCountCriterionHandler(qb, filter.GalleryCount))
+	query.handleCriterion(ctx, performerOCounterCriterionHandler(qb, filter.OCounter))
 	query.handleCriterion(ctx, dateCriterionHandler(filter.Birthdate, tableName+".birthdate"))
 	query.handleCriterion(ctx, dateCriterionHandler(filter.DeathDate, tableName+".death_date"))
 	query.handleCriterion(ctx, timestampCriterionHandler(filter.CreatedAt, tableName+".created_at"))
@@ -559,7 +675,7 @@ func (qb *PerformerStore) makeFilter(ctx context.Context, filter *models.Perform
 	return query
 }
 
-func (qb *PerformerStore) Query(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) ([]*models.Performer, int, error) {
+func (qb *PerformerStore) makeQuery(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) (*queryBuilder, error) {
 	if performerFilter == nil {
 		performerFilter = &models.PerformerFilterType{}
 	}
@@ -571,18 +687,31 @@ func (qb *PerformerStore) Query(ctx context.Context, performerFilter *models.Per
 	distinctIDs(&query, performerTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
-		searchColumns := []string{"performers.name", "performers.aliases"}
+		query.join(performersAliasesTable, "", "performer_aliases.performer_id = performers.id")
+		searchColumns := []string{"performers.name", "performer_aliases.alias"}
 		query.parseQueryString(searchColumns, *q)
 	}
 
 	if err := qb.validateFilter(performerFilter); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	filter := qb.makeFilter(ctx, performerFilter)
 
-	query.addFilter(filter)
+	if err := query.addFilter(filter); err != nil {
+		return nil, err
+	}
 
 	query.sortAndPagination = qb.getPerformerSort(findFilter) + getPagination(findFilter)
+
+	return &query, nil
+}
+
+func (qb *PerformerStore) Query(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) ([]*models.Performer, int, error) {
+	query, err := qb.makeQuery(ctx, performerFilter, findFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	idsResult, countResult, err := query.executeFind(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -596,6 +725,15 @@ func (qb *PerformerStore) Query(ctx context.Context, performerFilter *models.Per
 	return performers, countResult, nil
 }
 
+func (qb *PerformerStore) QueryCount(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) (int, error) {
+	query, err := qb.makeQuery(ctx, performerFilter, findFilter)
+	if err != nil {
+		return 0, err
+	}
+
+	return query.executeCount(ctx)
+}
+
 func performerIsMissingCriterionHandler(qb *PerformerStore, isMissing *string) criterionHandlerFunc {
 	return func(ctx context.Context, f *filterBuilder) {
 		if isMissing != nil && *isMissing != "" {
@@ -604,10 +742,9 @@ func performerIsMissingCriterionHandler(qb *PerformerStore, isMissing *string) c
 				f.addLeftJoin(performersScenesTable, "scenes_join", "scenes_join.performer_id = performers.id")
 				f.addWhere("scenes_join.scene_id IS NULL")
 			case "image":
-				f.addLeftJoin(performersImageTable, "image_join", "image_join.performer_id = performers.id")
-				f.addWhere("image_join.performer_id IS NULL")
+				f.addWhere("performers.image_blob IS NULL")
 			case "stash_id":
-				qb.stashIDRepository().join(f, "performer_stash_ids", "performers.id")
+				performersStashIDsTableMgr.join(f, "performer_stash_ids", "performers.id")
 				f.addWhere("performer_stash_ids.performer_id IS NULL")
 			default:
 				f.addWhere("(performers." + *isMissing + " IS NULL OR TRIM(performers." + *isMissing + ") = '')")
@@ -635,6 +772,18 @@ func performerAgeFilterCriterionHandler(age *models.IntCriterionInput) criterion
 			f.addWhere(clause, args...)
 		}
 	}
+}
+
+func performerAliasCriterionHandler(qb *PerformerStore, alias *models.StringCriterionInput) criterionHandlerFunc {
+	h := stringListCriterionHandlerBuilder{
+		joinTable:    performersAliasesTable,
+		stringColumn: performerAliasColumn,
+		addJoinTable: func(f *filterBuilder) {
+			performersAliasesTableMgr.join(f, "", "performers.id")
+		},
+	}
+
+	return h.handler(alias)
 }
 
 func performerTagsCriterionHandler(qb *PerformerStore, tags *models.HierarchicalMultiCriterionInput) criterionHandlerFunc {
@@ -689,6 +838,22 @@ func performerGalleryCountCriterionHandler(qb *PerformerStore, count *models.Int
 		primaryTable: performerTable,
 		joinTable:    performersGalleriesTable,
 		primaryFK:    performerIDColumn,
+	}
+
+	return h.handler(count)
+}
+
+func performerOCounterCriterionHandler(qb *PerformerStore, count *models.IntCriterionInput) criterionHandlerFunc {
+	h := joinedMultiSumCriterionHandlerBuilder{
+		primaryTable:  performerTable,
+		foreignTable1: sceneTable,
+		joinTable1:    performersScenesTable,
+		foreignTable2: imageTable,
+		joinTable2:    performersImagesTable,
+		primaryFK:     performerIDColumn,
+		foreignFK1:    sceneIDColumn,
+		foreignFK2:    imageIDColumn,
+		sum:           "o_counter",
 	}
 
 	return h.handler(count)
@@ -751,7 +916,11 @@ func performerStudiosCriterionHandler(qb *PerformerStore, studios *models.Hierar
 			}
 
 			const derivedPerformerStudioTable = "performer_studio"
-			valuesClause := getHierarchicalValues(ctx, qb.tx, studios.Value, studioTable, "", "parent_id", studios.Depth)
+			valuesClause, err := getHierarchicalValues(ctx, qb.tx, studios.Value, studioTable, "", "parent_id", "child_id", studios.Depth)
+			if err != nil {
+				f.setError(err)
+				return
+			}
 			f.addWith("studio(root_id, item_id) AS (" + valuesClause + ")")
 
 			templStr := `SELECT performer_id FROM {primaryTable}
@@ -771,6 +940,60 @@ func performerStudiosCriterionHandler(qb *PerformerStore, studios *models.Hierar
 	}
 }
 
+func performerAppearsWithCriterionHandler(qb *PerformerStore, performers *models.MultiCriterionInput) criterionHandlerFunc {
+	return func(ctx context.Context, f *filterBuilder) {
+		if performers != nil {
+			formatMaps := []utils.StrFormatMap{
+				{
+					"primaryTable": performersScenesTable,
+					"joinTable":    performersScenesTable,
+					"primaryFK":    sceneIDColumn,
+				},
+				{
+					"primaryTable": performersImagesTable,
+					"joinTable":    performersImagesTable,
+					"primaryFK":    imageIDColumn,
+				},
+				{
+					"primaryTable": performersGalleriesTable,
+					"joinTable":    performersGalleriesTable,
+					"primaryFK":    galleryIDColumn,
+				},
+			}
+
+			if len(performers.Value) == '0' {
+				return
+			}
+
+			const derivedPerformerPerformersTable = "performer_performers"
+
+			valuesClause := strings.Join(performers.Value, "),(")
+
+			f.addWith("performer(id) AS (VALUES(" + valuesClause + "))")
+
+			templStr := `SELECT {primaryTable}2.performer_id FROM {primaryTable}
+			INNER JOIN {primaryTable} AS {primaryTable}2 ON {primaryTable}.{primaryFK} = {primaryTable}2.{primaryFK}
+			INNER JOIN performer ON {primaryTable}.performer_id = performer.id
+			WHERE {primaryTable}2.performer_id != performer.id`
+
+			if performers.Modifier == models.CriterionModifierIncludesAll && len(performers.Value) > 1 {
+				templStr += `
+							GROUP BY {primaryTable}2.performer_id
+							HAVING(count(distinct {primaryTable}.performer_id) IS ` + strconv.Itoa(len(performers.Value)) + `)`
+			}
+
+			var unions []string
+			for _, c := range formatMaps {
+				unions = append(unions, utils.StrFormat(templStr, c))
+			}
+
+			f.addWith(fmt.Sprintf("%s AS (%s)", derivedPerformerPerformersTable, strings.Join(unions, " UNION ")))
+
+			f.addInnerJoin(derivedPerformerPerformersTable, "", fmt.Sprintf("performers.id = %s.performer_id", derivedPerformerPerformersTable))
+		}
+	}
+}
+
 func (qb *PerformerStore) getPerformerSort(findFilter *models.FindFilterType) string {
 	var sort string
 	var direction string
@@ -782,20 +1005,26 @@ func (qb *PerformerStore) getPerformerSort(findFilter *models.FindFilterType) st
 		direction = findFilter.GetDirection()
 	}
 
-	if sort == "tag_count" {
-		return getCountSort(performerTable, performersTagsTable, performerIDColumn, direction)
+	sortQuery := ""
+	switch sort {
+	case "tag_count":
+		sortQuery += getCountSort(performerTable, performersTagsTable, performerIDColumn, direction)
+	case "scenes_count":
+		sortQuery += getCountSort(performerTable, performersScenesTable, performerIDColumn, direction)
+	case "images_count":
+		sortQuery += getCountSort(performerTable, performersImagesTable, performerIDColumn, direction)
+	case "galleries_count":
+		sortQuery += getCountSort(performerTable, performersGalleriesTable, performerIDColumn, direction)
+	default:
+		sortQuery += getSort(sort, direction, "performers")
 	}
-	if sort == "scenes_count" {
-		return getCountSort(performerTable, performersScenesTable, performerIDColumn, direction)
-	}
-	if sort == "images_count" {
-		return getCountSort(performerTable, performersImagesTable, performerIDColumn, direction)
-	}
-	if sort == "galleries_count" {
-		return getCountSort(performerTable, performersGalleriesTable, performerIDColumn, direction)
+	if sort == "o_counter" {
+		return getMultiSumSort("o_counter", performerTable, sceneTable, performersScenesTable, imageTable, performersImagesTable, performerIDColumn, sceneIDColumn, imageIDColumn, direction)
 	}
 
-	return getSort(sort, direction, "performers")
+	// Whatever the sorting, always use name/id as a final sort
+	sortQuery += ", COALESCE(performers.name, performers.id) COLLATE NATURAL_CI ASC"
+	return sortQuery
 }
 
 func (qb *PerformerStore) tagsRepository() *joinRepository {
@@ -805,7 +1034,9 @@ func (qb *PerformerStore) tagsRepository() *joinRepository {
 			tableName: performersTagsTable,
 			idColumn:  performerIDColumn,
 		},
-		fkColumn: tagIDColumn,
+		fkColumn:     tagIDColumn,
+		foreignTable: tagTable,
+		orderBy:      "tags.name ASC",
 	}
 }
 
@@ -813,32 +1044,20 @@ func (qb *PerformerStore) GetTagIDs(ctx context.Context, id int) ([]int, error) 
 	return qb.tagsRepository().getIDs(ctx, id)
 }
 
-func (qb *PerformerStore) UpdateTags(ctx context.Context, id int, tagIDs []int) error {
-	// Delete the existing joins and then create new ones
-	return qb.tagsRepository().replace(ctx, id, tagIDs)
-}
-
-func (qb *PerformerStore) imageRepository() *imageRepository {
-	return &imageRepository{
-		repository: repository{
-			tx:        qb.tx,
-			tableName: "performers_image",
-			idColumn:  performerIDColumn,
-		},
-		imageColumn: "image",
-	}
-}
-
 func (qb *PerformerStore) GetImage(ctx context.Context, performerID int) ([]byte, error) {
-	return qb.imageRepository().get(ctx, performerID)
+	return qb.blobJoinQueryBuilder.GetImage(ctx, performerID, performerImageBlobColumn)
+}
+
+func (qb *PerformerStore) HasImage(ctx context.Context, performerID int) (bool, error) {
+	return qb.blobJoinQueryBuilder.HasImage(ctx, performerID, performerImageBlobColumn)
 }
 
 func (qb *PerformerStore) UpdateImage(ctx context.Context, performerID int, image []byte) error {
-	return qb.imageRepository().replace(ctx, performerID, image)
+	return qb.blobJoinQueryBuilder.UpdateImage(ctx, performerID, performerImageBlobColumn, image)
 }
 
-func (qb *PerformerStore) DestroyImage(ctx context.Context, performerID int) error {
-	return qb.imageRepository().destroy(ctx, []int{performerID})
+func (qb *PerformerStore) destroyImage(ctx context.Context, performerID int) error {
+	return qb.blobJoinQueryBuilder.DestroyImage(ctx, performerID, performerImageBlobColumn)
 }
 
 func (qb *PerformerStore) stashIDRepository() *stashIDRepository {
@@ -851,12 +1070,12 @@ func (qb *PerformerStore) stashIDRepository() *stashIDRepository {
 	}
 }
 
-func (qb *PerformerStore) GetStashIDs(ctx context.Context, performerID int) ([]models.StashID, error) {
-	return qb.stashIDRepository().get(ctx, performerID)
+func (qb *PerformerStore) GetAliases(ctx context.Context, performerID int) ([]string, error) {
+	return performersAliasesTableMgr.get(ctx, performerID)
 }
 
-func (qb *PerformerStore) UpdateStashIDs(ctx context.Context, performerID int, stashIDs []models.StashID) error {
-	return qb.stashIDRepository().replace(ctx, performerID, stashIDs)
+func (qb *PerformerStore) GetStashIDs(ctx context.Context, performerID int) ([]models.StashID, error) {
+	return performersStashIDsTableMgr.get(ctx, performerID)
 }
 
 func (qb *PerformerStore) FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Performer, error) {

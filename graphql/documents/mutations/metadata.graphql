@@ -41,3 +41,11 @@ mutation MigrateHashNaming {
 mutation BackupDatabase($input: BackupDatabaseInput!) {
   backupDatabase(input: $input)
 }
+
+mutation AnonymiseDatabase($input: AnonymiseDatabaseInput!) {
+  anonymiseDatabase(input: $input)
+}
+
+mutation OptimiseDatabase {
+  optimiseDatabase
+}

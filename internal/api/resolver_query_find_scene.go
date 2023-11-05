@@ -5,8 +5,9 @@ import (
 	"strconv"
 
 	"github.com/99designs/gqlgen/graphql"
-	"github.com/stashapp/stash/internal/manager"
+
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/scene"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 )
 
@@ -189,11 +190,11 @@ func (r *queryResolver) FindScenesByPathRegex(ctx context.Context, filter *model
 	return ret, nil
 }
 
-func (r *queryResolver) ParseSceneFilenames(ctx context.Context, filter *models.FindFilterType, config manager.SceneParserInput) (ret *SceneParserResultType, err error) {
-	parser := manager.NewSceneFilenameParser(filter, config)
+func (r *queryResolver) ParseSceneFilenames(ctx context.Context, filter *models.FindFilterType, config models.SceneParserInput) (ret *SceneParserResultType, err error) {
+	parser := scene.NewFilenameParser(filter, config)
 
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		result, count, err := parser.Parse(ctx, manager.SceneFilenameParserRepository{
+		result, count, err := parser.Parse(ctx, scene.FilenameParserRepository{
 			Scene:     r.repository.Scene,
 			Performer: r.repository.Performer,
 			Studio:    r.repository.Studio,
@@ -218,13 +219,28 @@ func (r *queryResolver) ParseSceneFilenames(ctx context.Context, filter *models.
 	return ret, nil
 }
 
-func (r *queryResolver) FindDuplicateScenes(ctx context.Context, distance *int) (ret [][]*models.Scene, err error) {
+func (r *queryResolver) FindDuplicateScenes(ctx context.Context, distance *int, durationDiff *float64) (ret [][]*models.Scene, err error) {
 	dist := 0
+	durDiff := -1.
 	if distance != nil {
 		dist = *distance
 	}
+	if durationDiff != nil {
+		durDiff = *durationDiff
+	}
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Scene.FindDuplicates(ctx, dist)
+		ret, err = r.repository.Scene.FindDuplicates(ctx, dist, durDiff)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (r *queryResolver) AllScenes(ctx context.Context) (ret []*models.Scene, err error) {
+	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+		ret, err = r.repository.Scene.All(ctx)
 		return err
 	}); err != nil {
 		return nil, err

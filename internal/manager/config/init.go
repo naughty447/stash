@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
+	"github.com/stashapp/stash/internal/build"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 )
@@ -24,6 +25,8 @@ type flagStruct struct {
 	configFilePath string
 	cpuProfilePath string
 	nobrowser      bool
+	helpFlag       bool
+	versionFlag    bool
 }
 
 func GetInstance() *Instance {
@@ -40,6 +43,17 @@ func Initialize() (*Instance, error) {
 	var err error
 	initOnce.Do(func() {
 		flags := initFlags()
+
+		if flags.helpFlag {
+			pflag.Usage()
+			os.Exit(0)
+		}
+
+		if flags.versionFlag {
+			fmt.Printf(build.VersionString() + "\n")
+			os.Exit(0)
+		}
+
 		overrides := makeOverrideConfig()
 
 		_ = GetInstance()
@@ -126,6 +140,8 @@ func initFlags() flagStruct {
 	pflag.StringVarP(&flags.configFilePath, "config", "c", "", "config file to use")
 	pflag.StringVar(&flags.cpuProfilePath, "cpuprofile", "", "write cpu profile to file")
 	pflag.BoolVar(&flags.nobrowser, "nobrowser", false, "Don't open a browser window after launch")
+	pflag.BoolVarP(&flags.helpFlag, "help", "h", false, "show this help text and exit")
+	pflag.BoolVarP(&flags.versionFlag, "version", "v", false, "show version number and exit")
 
 	pflag.Parse()
 

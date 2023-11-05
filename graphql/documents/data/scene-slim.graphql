@@ -4,7 +4,7 @@ fragment SlimSceneData on Scene {
   code
   details
   director
-  url
+  urls
   date
   rating100
   o_counter
@@ -44,6 +44,9 @@ fragment SlimSceneData on Scene {
   galleries {
     id
     files {
+      path
+    }
+    folder {
       path
     }
     title

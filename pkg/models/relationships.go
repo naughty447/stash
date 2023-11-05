@@ -34,12 +34,16 @@ type VideoFileLoader interface {
 	GetFiles(ctx context.Context, relatedID int) ([]*file.VideoFile, error)
 }
 
-type ImageFileLoader interface {
-	GetFiles(ctx context.Context, relatedID int) ([]*file.ImageFile, error)
-}
-
 type FileLoader interface {
 	GetFiles(ctx context.Context, relatedID int) ([]file.File, error)
+}
+
+type AliasLoader interface {
+	GetAliases(ctx context.Context, relatedID int) ([]string, error)
+}
+
+type URLLoader interface {
+	GetURLs(ctx context.Context, relatedID int) ([]string, error)
 }
 
 // RelatedIDs represents a list of related IDs.
@@ -316,89 +320,6 @@ func (r *RelatedVideoFiles) loadPrimary(fn func() (*file.VideoFile, error)) erro
 	return nil
 }
 
-type RelatedImageFiles struct {
-	primaryFile   *file.ImageFile
-	files         []*file.ImageFile
-	primaryLoaded bool
-}
-
-func NewRelatedImageFiles(files []*file.ImageFile) RelatedImageFiles {
-	ret := RelatedImageFiles{
-		files:         files,
-		primaryLoaded: true,
-	}
-
-	if len(files) > 0 {
-		ret.primaryFile = files[0]
-	}
-
-	return ret
-}
-
-// Loaded returns true if the relationship has been loaded.
-func (r RelatedImageFiles) Loaded() bool {
-	return r.files != nil
-}
-
-// Loaded returns true if the primary file relationship has been loaded.
-func (r RelatedImageFiles) PrimaryLoaded() bool {
-	return r.primaryLoaded
-}
-
-// List returns the related files. Panics if the relationship has not been loaded.
-func (r RelatedImageFiles) List() []*file.ImageFile {
-	if !r.Loaded() {
-		panic("relationship has not been loaded")
-	}
-
-	return r.files
-}
-
-// Primary returns the primary file. Panics if the relationship has not been loaded.
-func (r RelatedImageFiles) Primary() *file.ImageFile {
-	if !r.PrimaryLoaded() {
-		panic("relationship has not been loaded")
-	}
-
-	return r.primaryFile
-}
-
-func (r *RelatedImageFiles) load(fn func() ([]*file.ImageFile, error)) error {
-	if r.Loaded() {
-		return nil
-	}
-
-	var err error
-	r.files, err = fn()
-	if err != nil {
-		return err
-	}
-
-	if len(r.files) > 0 {
-		r.primaryFile = r.files[0]
-	}
-
-	r.primaryLoaded = true
-
-	return nil
-}
-
-func (r *RelatedImageFiles) loadPrimary(fn func() (*file.ImageFile, error)) error {
-	if r.PrimaryLoaded() {
-		return nil
-	}
-
-	var err error
-	r.primaryFile, err = fn()
-	if err != nil {
-		return err
-	}
-
-	r.primaryLoaded = true
-
-	return nil
-}
-
 type RelatedFiles struct {
 	primaryFile   file.File
 	files         []file.File
@@ -478,6 +399,64 @@ func (r *RelatedFiles) loadPrimary(fn func() (file.File, error)) error {
 	}
 
 	r.primaryLoaded = true
+
+	return nil
+}
+
+// RelatedStrings represents a list of related strings.
+// TODO - this can be made generic
+type RelatedStrings struct {
+	list []string
+}
+
+// NewRelatedStrings returns a loaded RelatedStrings object with the provided values.
+// Loaded will return true when called on the returned object if the provided slice is not nil.
+func NewRelatedStrings(values []string) RelatedStrings {
+	return RelatedStrings{
+		list: values,
+	}
+}
+
+// Loaded returns true if the related IDs have been loaded.
+func (r RelatedStrings) Loaded() bool {
+	return r.list != nil
+}
+
+func (r RelatedStrings) mustLoaded() {
+	if !r.Loaded() {
+		panic("list has not been loaded")
+	}
+}
+
+// List returns the related values. Panics if the relationship has not been loaded.
+func (r RelatedStrings) List() []string {
+	r.mustLoaded()
+
+	return r.list
+}
+
+// Add adds the provided values to the list. Panics if the relationship has not been loaded.
+func (r *RelatedStrings) Add(values ...string) {
+	r.mustLoaded()
+
+	r.list = append(r.list, values...)
+}
+
+func (r *RelatedStrings) load(fn func() ([]string, error)) error {
+	if r.Loaded() {
+		return nil
+	}
+
+	values, err := fn()
+	if err != nil {
+		return err
+	}
+
+	if values == nil {
+		values = []string{}
+	}
+
+	r.list = values
 
 	return nil
 }

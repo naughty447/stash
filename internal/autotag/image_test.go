@@ -18,15 +18,17 @@ func TestImagePerformers(t *testing.T) {
 	const performerName = "performer name"
 	const performerID = 2
 	performer := models.Performer{
-		ID:   performerID,
-		Name: performerName,
+		ID:      performerID,
+		Name:    performerName,
+		Aliases: models.NewRelatedStrings([]string{}),
 	}
 
 	const reversedPerformerName = "name performer"
 	const reversedPerformerID = 3
 	reversedPerformer := models.Performer{
-		ID:   reversedPerformerID,
-		Name: reversedPerformerName,
+		ID:      reversedPerformerID,
+		Name:    reversedPerformerName,
+		Aliases: models.NewRelatedStrings([]string{}),
 	}
 
 	testTables := generateTestTable(performerName, imageExt)
@@ -70,14 +72,14 @@ func TestImageStudios(t *testing.T) {
 	var studioID = 2
 	studio := models.Studio{
 		ID:   studioID,
-		Name: models.NullString(studioName),
+		Name: studioName,
 	}
 
 	const reversedStudioName = "name studio"
 	const reversedStudioID = 3
 	reversedStudio := models.Studio{
 		ID:   reversedStudioID,
-		Name: models.NullString(reversedStudioName),
+		Name: reversedStudioName,
 	}
 
 	testTables := generateTestTable(studioName, imageExt)
@@ -116,7 +118,7 @@ func TestImageStudios(t *testing.T) {
 
 	// test against aliases
 	const unmatchedName = "unmatched"
-	studio.Name.String = unmatchedName
+	studio.Name = unmatchedName
 
 	for _, test := range testTables {
 		mockStudioReader := &mocks.StudioReaderWriter{}

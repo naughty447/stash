@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Form,
   Col,
@@ -8,9 +8,9 @@ import {
   FormControl,
   Badge,
 } from "react-bootstrap";
-import { CollapseButton } from "src/components/Shared/CollapseButton";
-import Icon from "src/components/Shared/Icon";
-import Modal from "src/components/Shared/Modal";
+import { CollapseButton } from "./CollapseButton";
+import { Icon } from "./Icon";
+import { ModalComponent } from "./Modal";
 import isEqual from "lodash-es/isEqual";
 import clone from "lodash-es/clone";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -20,8 +20,10 @@ import {
   faPlus,
   faTimes,
 } from "@fortawesome/free-solid-svg-icons";
-import { getCountryByISO } from "src/utils";
-import CountrySelect from "./CountrySelect";
+import { getCountryByISO } from "src/utils/country";
+import { CountrySelect } from "./CountrySelect";
+import { StringListInput } from "./StringListInput";
+import { ImageSelector } from "./ImageSelector";
 
 export class ScrapeResult<T> {
   public newValue?: T;
@@ -36,10 +38,13 @@ export class ScrapeResult<T> {
   ) {
     this.originalValue = originalValue ?? undefined;
     this.newValue = newValue ?? undefined;
+    // NOTE: this means that zero values are treated as null
+    // this is incorrect for numbers and booleans, but correct for strings
+    const hasNewValue = !!this.newValue;
 
     const valuesEqual = isEqual(originalValue, newValue);
-    this.useNewValue = useNewValue ?? (!!this.newValue && !valuesEqual);
-    this.scraped = !!this.newValue && !valuesEqual;
+    this.useNewValue = useNewValue ?? (hasNewValue && !valuesEqual);
+    this.scraped = hasNewValue && !valuesEqual;
   }
 
   public setOriginalValue(value?: T) {
@@ -67,6 +72,23 @@ export class ScrapeResult<T> {
   }
 }
 
+// for types where !!value is a valid value (boolean and number)
+export class ZeroableScrapeResult<T> extends ScrapeResult<T> {
+  public constructor(
+    originalValue?: T | null,
+    newValue?: T | null,
+    useNewValue?: boolean
+  ) {
+    super(originalValue, newValue, useNewValue);
+
+    const hasNewValue = this.newValue !== undefined;
+
+    const valuesEqual = isEqual(originalValue, newValue);
+    this.useNewValue = useNewValue ?? (hasNewValue && !valuesEqual);
+    this.scraped = hasNewValue && !valuesEqual;
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function hasScrapedValues(values: ScrapeResult<any>[]) {
   return values.some((r) => r.scraped);
@@ -82,6 +104,7 @@ interface IScrapedFieldProps<T> {
 
 interface IScrapedRowProps<T, V extends IHasName>
   extends IScrapedFieldProps<T> {
+  className?: string;
   title: string;
   renderOriginalField: (result: ScrapeResult<T>) => JSX.Element | undefined;
   renderNewField: (result: ScrapeResult<T>) => JSX.Element | undefined;
@@ -155,7 +178,7 @@ export const ScrapeDialogRow = <T, V extends IHasName>(
   }
 
   return (
-    <Row className="px-3 pt-3">
+    <Row className={`px-3 pt-3 ${props.className ?? ""}`}>
       <Form.Label column lg="3">
         {props.title}
       </Form.Label>
@@ -242,6 +265,71 @@ export const ScrapedInputGroupRow: React.FC<IScrapedInputGroupRowProps> = (
       )}
       renderNewField={() => (
         <ScrapedInputGroup
+          placeholder={props.placeholder || props.title}
+          result={props.result}
+          isNew
+          locked={props.locked}
+          onChange={(value) =>
+            props.onChange(props.result.cloneWithValue(value))
+          }
+        />
+      )}
+      onChange={props.onChange}
+    />
+  );
+};
+
+interface IScrapedStringListProps {
+  isNew?: boolean;
+  placeholder?: string;
+  locked?: boolean;
+  result: ScrapeResult<string[]>;
+  onChange?: (value: string[]) => void;
+}
+
+const ScrapedStringList: React.FC<IScrapedStringListProps> = (props) => {
+  const value = props.isNew
+    ? props.result.newValue
+    : props.result.originalValue;
+
+  return (
+    <StringListInput
+      value={value ?? []}
+      setValue={(v) => {
+        if (props.isNew && props.onChange) {
+          props.onChange(v);
+        }
+      }}
+      placeholder={props.placeholder}
+      readOnly={!props.isNew || props.locked}
+    />
+  );
+};
+
+interface IScrapedStringListRowProps {
+  title: string;
+  placeholder?: string;
+  result: ScrapeResult<string[]>;
+  locked?: boolean;
+  onChange: (value: ScrapeResult<string[]>) => void;
+}
+
+export const ScrapedStringListRow: React.FC<IScrapedStringListRowProps> = (
+  props
+) => {
+  return (
+    <ScrapeDialogRow
+      className="string-list-row"
+      title={props.title}
+      result={props.result}
+      renderOriginalField={() => (
+        <ScrapedStringList
+          placeholder={props.placeholder || props.title}
+          result={props.result}
+        />
+      )}
+      renderNewField={() => (
+        <ScrapedStringList
           placeholder={props.placeholder || props.title}
           result={props.result}
           isNew
@@ -354,6 +442,49 @@ export const ScrapedImageRow: React.FC<IScrapedImageRowProps> = (props) => {
   );
 };
 
+interface IScrapedImagesRowProps {
+  title: string;
+  className?: string;
+  result: ScrapeResult<string>;
+  images: string[];
+  onChange: (value: ScrapeResult<string>) => void;
+}
+
+export const ScrapedImagesRow: React.FC<IScrapedImagesRowProps> = (props) => {
+  const [imageIndex, setImageIndex] = useState(0);
+
+  function onSetImageIndex(newIdx: number) {
+    const ret = props.result.cloneWithValue(props.images[newIdx]);
+    props.onChange(ret);
+    setImageIndex(newIdx);
+  }
+
+  return (
+    <ScrapeDialogRow
+      title={props.title}
+      result={props.result}
+      renderOriginalField={() => (
+        <ScrapedImage
+          result={props.result}
+          className={props.className}
+          placeholder={props.title}
+        />
+      )}
+      renderNewField={() => (
+        <div>
+          <ImageSelector
+            imageClassName={props.className}
+            images={props.images}
+            imageIndex={imageIndex}
+            setImageIndex={onSetImageIndex}
+          />
+        </div>
+      )}
+      onChange={props.onChange}
+    />
+  );
+};
+
 interface IScrapeDialogProps {
   title: string;
   existingLabel?: string;
@@ -367,7 +498,7 @@ export const ScrapeDialog: React.FC<IScrapeDialogProps> = (
 ) => {
   const intl = useIntl();
   return (
-    <Modal
+    <ModalComponent
       show
       icon={faPencilAlt}
       header={props.title}
@@ -406,7 +537,7 @@ export const ScrapeDialog: React.FC<IScrapeDialogProps> = (
           {props.renderScrapeRows()}
         </Form>
       </div>
-    </Modal>
+    </ModalComponent>
   );
 };
 

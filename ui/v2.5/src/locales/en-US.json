@@ -1,4 +1,7 @@
 {
+  "actions": {
+    "customise": "Customize"
+  },
   "eye_color": "Eye Color",
   "favourite": "Favorite",
   "hair_color": "Hair Color",
@@ -16,5 +19,6 @@
       }
     }
   },
+  "optimise_database": "Optimize Database",
   "performer_favorite": "Performer Favorited"
 }

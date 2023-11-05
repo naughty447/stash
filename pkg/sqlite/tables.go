@@ -24,9 +24,14 @@ var (
 	scenesPerformersJoinTable = goqu.T(performersScenesTable)
 	scenesStashIDsJoinTable   = goqu.T("scene_stash_ids")
 	scenesMoviesJoinTable     = goqu.T(moviesScenesTable)
+	scenesURLsJoinTable       = goqu.T(scenesURLsTable)
 
+	performersAliasesJoinTable  = goqu.T(performersAliasesTable)
 	performersTagsJoinTable     = goqu.T(performersTagsTable)
 	performersStashIDsJoinTable = goqu.T("performer_stash_ids")
+
+	studiosAliasesJoinTable  = goqu.T(studioAliasesTable)
+	studiosStashIDsJoinTable = goqu.T("studio_stash_ids")
 )
 
 var (
@@ -103,12 +108,22 @@ var (
 		},
 		fkColumn: galleriesScenesJoinTable.Col(sceneIDColumn),
 	}
+
+	galleriesChaptersTableMgr = &table{
+		table:    goqu.T(galleriesChaptersTable),
+		idColumn: goqu.T(galleriesChaptersTable).Col(idColumn),
+	}
 )
 
 var (
 	sceneTableMgr = &table{
 		table:    goqu.T(sceneTable),
 		idColumn: goqu.T(sceneTable).Col(idColumn),
+	}
+
+	sceneMarkerTableMgr = &table{
+		table:    goqu.T(sceneMarkerTable),
+		idColumn: goqu.T(sceneMarkerTable).Col(idColumn),
 	}
 
 	scenesFilesTableMgr = &relatedFilesTable{
@@ -149,6 +164,14 @@ var (
 			idColumn: scenesMoviesJoinTable.Col(sceneIDColumn),
 		},
 	}
+
+	scenesURLsTableMgr = &orderedValueTable[string]{
+		table: table{
+			table:    scenesURLsJoinTable,
+			idColumn: scenesURLsJoinTable.Col(sceneIDColumn),
+		},
+		valueColumn: scenesURLsJoinTable.Col(sceneURLColumn),
+	}
 )
 
 var (
@@ -183,12 +206,50 @@ var (
 		table:    goqu.T(performerTable),
 		idColumn: goqu.T(performerTable).Col(idColumn),
 	}
+
+	performersAliasesTableMgr = &stringTable{
+		table: table{
+			table:    performersAliasesJoinTable,
+			idColumn: performersAliasesJoinTable.Col(performerIDColumn),
+		},
+		stringColumn: performersAliasesJoinTable.Col(performerAliasColumn),
+	}
+
+	performersTagsTableMgr = &joinTable{
+		table: table{
+			table:    performersTagsJoinTable,
+			idColumn: performersTagsJoinTable.Col(performerIDColumn),
+		},
+		fkColumn: performersTagsJoinTable.Col(tagIDColumn),
+	}
+
+	performersStashIDsTableMgr = &stashIDTable{
+		table: table{
+			table:    performersStashIDsJoinTable,
+			idColumn: performersStashIDsJoinTable.Col(performerIDColumn),
+		},
+	}
 )
 
 var (
 	studioTableMgr = &table{
 		table:    goqu.T(studioTable),
 		idColumn: goqu.T(studioTable).Col(idColumn),
+	}
+
+	studiosAliasesTableMgr = &stringTable{
+		table: table{
+			table:    studiosAliasesJoinTable,
+			idColumn: studiosAliasesJoinTable.Col(studioIDColumn),
+		},
+		stringColumn: studiosAliasesJoinTable.Col(studioAliasColumn),
+	}
+
+	studiosStashIDsTableMgr = &stashIDTable{
+		table: table{
+			table:    studiosStashIDsJoinTable,
+			idColumn: studiosStashIDsJoinTable.Col(studioIDColumn),
+		},
 	}
 )
 
@@ -203,5 +264,19 @@ var (
 	movieTableMgr = &table{
 		table:    goqu.T(movieTable),
 		idColumn: goqu.T(movieTable).Col(idColumn),
+	}
+)
+
+var (
+	blobTableMgr = &table{
+		table:    goqu.T(blobTable),
+		idColumn: goqu.T(blobTable).Col(blobChecksumColumn),
+	}
+)
+
+var (
+	savedFilterTableMgr = &table{
+		table:    goqu.T(savedFilterTable),
+		idColumn: goqu.T(savedFilterTable).Col(idColumn),
 	}
 )

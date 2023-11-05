@@ -1,9 +1,9 @@
 import migration32 from "./32.md";
 import migration39 from "./39.md";
+import migration48 from "./48.md";
 
-type Module = typeof migration32;
-
-export const migrationNotes: Record<number, Module> = {
+export const migrationNotes: Record<number, string> = {
   32: migration32,
   39: migration39,
+  48: migration48,
 };

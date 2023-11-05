@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 
+	"github.com/stashapp/stash/internal/build"
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -47,6 +49,9 @@ func (r *Resolver) scraperCache() *scraper.Cache {
 func (r *Resolver) Gallery() GalleryResolver {
 	return &galleryResolver{r}
 }
+func (r *Resolver) GalleryChapter() GalleryChapterResolver {
+	return &galleryChapterResolver{r}
+}
 func (r *Resolver) Mutation() MutationResolver {
 	return &mutationResolver{r}
 }
@@ -83,6 +88,7 @@ type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
 
 type galleryResolver struct{ *Resolver }
+type galleryChapterResolver struct{ *Resolver }
 type performerResolver struct{ *Resolver }
 type sceneResolver struct{ *Resolver }
 type sceneMarkerResolver struct{ *Resolver }
@@ -152,18 +158,26 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 		studiosCount, _ := studiosQB.Count(ctx)
 		moviesCount, _ := moviesQB.Count(ctx)
 		tagsCount, _ := tagsQB.Count(ctx)
+		totalOCount, _ := scenesQB.OCount(ctx)
+		totalPlayDuration, _ := scenesQB.PlayDuration(ctx)
+		totalPlayCount, _ := scenesQB.PlayCount(ctx)
+		uniqueScenePlayCount, _ := scenesQB.UniqueScenePlayCount(ctx)
 
 		ret = StatsResultType{
-			SceneCount:     scenesCount,
-			ScenesSize:     scenesSize,
-			ScenesDuration: scenesDuration,
-			ImageCount:     imageCount,
-			ImagesSize:     imageSize,
-			GalleryCount:   galleryCount,
-			PerformerCount: performersCount,
-			StudioCount:    studiosCount,
-			MovieCount:     moviesCount,
-			TagCount:       tagsCount,
+			SceneCount:        scenesCount,
+			ScenesSize:        scenesSize,
+			ScenesDuration:    scenesDuration,
+			ImageCount:        imageCount,
+			ImagesSize:        imageSize,
+			GalleryCount:      galleryCount,
+			PerformerCount:    performersCount,
+			StudioCount:       studiosCount,
+			MovieCount:        moviesCount,
+			TagCount:          tagsCount,
+			TotalOCount:       totalOCount,
+			TotalPlayDuration: totalPlayDuration,
+			TotalPlayCount:    totalPlayCount,
+			ScenesPlayed:      uniqueScenePlayCount,
 		}
 
 		return nil
@@ -175,7 +189,7 @@ func (r *queryResolver) Stats(ctx context.Context) (*StatsResultType, error) {
 }
 
 func (r *queryResolver) Version(ctx context.Context) (*Version, error) {
-	version, hash, buildtime := GetVersion()
+	version, hash, buildtime := build.Version()
 
 	return &Version{
 		Version:   &version,
@@ -184,19 +198,60 @@ func (r *queryResolver) Version(ctx context.Context) (*Version, error) {
 	}, nil
 }
 
-// Latestversion returns the latest git shorthash commit.
-func (r *queryResolver) Latestversion(ctx context.Context) (*ShortVersion, error) {
-	ver, url, err := GetLatestVersion(ctx, true)
-	if err == nil {
-		logger.Infof("Retrieved latest hash: %s", ver)
-	} else {
-		logger.Errorf("Error while retrieving latest hash: %s", err)
+func (r *queryResolver) Latestversion(ctx context.Context) (*LatestVersion, error) {
+	latestRelease, err := GetLatestRelease(ctx)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			logger.Errorf("Error while retrieving latest version: %v", err)
+		}
+		return nil, err
+	}
+	logger.Infof("Retrieved latest version: %s (%s)", latestRelease.Version, latestRelease.ShortHash)
+
+	return &LatestVersion{
+		Version:     latestRelease.Version,
+		Shorthash:   latestRelease.ShortHash,
+		ReleaseDate: latestRelease.Date,
+		URL:         latestRelease.Url,
+	}, nil
+}
+
+func (r *mutationResolver) ExecSQL(ctx context.Context, sql string, args []interface{}) (*SQLExecResult, error) {
+	var rowsAffected *int64
+	var lastInsertID *int64
+
+	db := manager.GetInstance().Database
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		var err error
+		rowsAffected, lastInsertID, err = db.ExecSQL(ctx, sql, args)
+		return err
+	}); err != nil {
+		return nil, err
 	}
 
-	return &ShortVersion{
-		Shorthash: ver,
-		URL:       url,
-	}, err
+	return &SQLExecResult{
+		RowsAffected: rowsAffected,
+		LastInsertID: lastInsertID,
+	}, nil
+}
+
+func (r *mutationResolver) QuerySQL(ctx context.Context, sql string, args []interface{}) (*SQLQueryResult, error) {
+	var cols []string
+	var rows [][]interface{}
+
+	db := manager.GetInstance().Database
+	if err := r.withTxn(ctx, func(ctx context.Context) error {
+		var err error
+		cols, rows, err = db.QuerySQL(ctx, sql, args)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return &SQLQueryResult{
+		Columns: cols,
+		Rows:    rows,
+	}, nil
 }
 
 // Get scene marker tags which show up under the video.
@@ -221,6 +276,11 @@ func (r *queryResolver) SceneMarkerTags(ctx context.Context, scene_id string) ([
 			if err != nil {
 				return err
 			}
+
+			if markerPrimaryTag == nil {
+				return fmt.Errorf("tag with id %d not found", sceneMarker.PrimaryTagID)
+			}
+
 			_, hasKey := tags[markerPrimaryTag.ID]
 			if !hasKey {
 				sceneMarkerTag := &SceneMarkerTag{Tag: markerPrimaryTag}

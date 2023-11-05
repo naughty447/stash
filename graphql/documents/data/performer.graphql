@@ -2,6 +2,7 @@ fragment PerformerData on Performer {
   id
   checksum
   name
+  disambiguation
   url
   gender
   twitter
@@ -13,10 +14,12 @@ fragment PerformerData on Performer {
   height_cm
   measurements
   fake_tits
+  penis_length
+  circumcised
   career_length
   tattoos
   piercings
-  aliases
+  alias_list
   favorite
   ignore_auto_tag
   image_path
@@ -24,6 +27,8 @@ fragment PerformerData on Performer {
   image_count
   gallery_count
   movie_count
+  performer_count
+  o_counter
 
   tags {
     ...SlimTagData

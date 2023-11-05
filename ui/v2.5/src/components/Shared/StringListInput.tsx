@@ -1,22 +1,64 @@
-import { faMinus, faPlus } from "@fortawesome/free-solid-svg-icons";
-import React from "react";
+import { faMinus } from "@fortawesome/free-solid-svg-icons";
+import React, { ComponentType } from "react";
 import { Button, Form, InputGroup } from "react-bootstrap";
-import Icon from "src/components/Shared/Icon";
+import { Icon } from "./Icon";
 
-interface IStringListInputProps {
-  value: string[];
-  setValue: (value: string[]) => void;
-  defaultNewValue?: string;
+interface IListInputComponentProps {
+  value: string;
+  setValue: (value: string) => void;
+  placeholder?: string;
   className?: string;
-  errors?: string;
+  readOnly?: boolean;
 }
 
+interface IListInputAppendProps {
+  value: string;
+}
+
+export interface IStringListInputProps {
+  value: string[];
+  setValue: (value: string[]) => void;
+  inputComponent?: ComponentType<IListInputComponentProps>;
+  appendComponent?: ComponentType<IListInputAppendProps>;
+  placeholder?: string;
+  className?: string;
+  errors?: string;
+  errorIdx?: number[];
+  readOnly?: boolean;
+}
+
+export const StringInput: React.FC<IListInputComponentProps> = ({
+  className,
+  placeholder,
+  value,
+  setValue,
+  readOnly = false,
+}) => {
+  return (
+    <Form.Control
+      className={`text-input ${className ?? ""}`}
+      value={value}
+      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+        setValue(e.currentTarget.value)
+      }
+      placeholder={placeholder}
+      readOnly={readOnly}
+    />
+  );
+};
+
 export const StringListInput: React.FC<IStringListInputProps> = (props) => {
+  const Input = props.inputComponent ?? StringInput;
+  const AppendComponent = props.appendComponent;
+  const values = props.value.concat("");
+
   function valueChanged(idx: number, value: string) {
-    const newValues = props.value.map((v, i) => {
-      const ret = idx !== i ? v : value;
-      return ret;
-    });
+    const newValues = values
+      .map((v, i) => {
+        const ret = idx !== i ? v : value;
+        return ret;
+      })
+      .filter((v, i) => i < values.length - 2 || v);
     props.setValue(newValues);
   }
 
@@ -26,42 +68,36 @@ export const StringListInput: React.FC<IStringListInputProps> = (props) => {
     props.setValue(newValues);
   }
 
-  function addValue() {
-    const newValues = props.value.concat(props.defaultNewValue ?? "");
-
-    props.setValue(newValues);
-  }
-
   return (
     <>
       <div className={`string-list-input ${props.errors ? "is-invalid" : ""}`}>
-        {props.value && props.value.length > 0 && (
-          <Form.Group>
-            {props.value &&
-              props.value.map((v, i) => (
-                // eslint-disable-next-line react/no-array-index-key
-                <InputGroup className={props.className} key={i}>
-                  <Form.Control
-                    className="text-input"
-                    value={v}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      valueChanged(i, e.currentTarget.value)
-                    }
-                  />
-                  <InputGroup.Append>
-                    <Button variant="danger" onClick={() => removeValue(i)}>
-                      <Icon icon={faMinus} />
-                    </Button>
-                  </InputGroup.Append>
-                </InputGroup>
-              ))}
-          </Form.Group>
-        )}
-        <Button className="minimal" size="sm" onClick={() => addValue()}>
-          <Icon icon={faPlus} />
-        </Button>
+        <Form.Group>
+          {values.map((v, i) => (
+            <InputGroup className={props.className} key={i}>
+              <Input
+                value={v}
+                setValue={(value) => valueChanged(i, value)}
+                placeholder={props.placeholder}
+                className={props.errorIdx?.includes(i) ? "is-invalid" : ""}
+                readOnly={props.readOnly}
+              />
+              <InputGroup.Append>
+                {AppendComponent && <AppendComponent value={v} />}
+                {!props.readOnly && (
+                  <Button
+                    variant="danger"
+                    onClick={() => removeValue(i)}
+                    disabled={i === values.length - 1}
+                  >
+                    <Icon icon={faMinus} />
+                  </Button>
+                )}
+              </InputGroup.Append>
+            </InputGroup>
+          ))}
+        </Form.Group>
       </div>
-      <div className="invalid-feedback">{props.errors}</div>
+      <div className="invalid-feedback mt-n2">{props.errors}</div>
     </>
   );
 };

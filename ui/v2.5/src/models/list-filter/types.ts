@@ -18,13 +18,19 @@ export interface ILabeledValue {
   value: string;
 }
 
+export interface ILabeledValueListValue {
+  items: ILabeledId[];
+  excluded: ILabeledId[];
+}
+
 export interface IHierarchicalLabelValue {
   items: ILabeledId[];
+  excluded: ILabeledId[];
   depth: number;
 }
 
 export interface INumberValue {
-  value: number;
+  value: number | undefined;
   value2: number | undefined;
 }
 
@@ -46,6 +52,11 @@ export interface IDateValue {
 export interface ITimestampValue {
   value: string;
   value2: string | undefined;
+}
+
+export interface IPhashDistanceValue {
+  value: string;
+  distance?: number;
 }
 
 export function criterionIsHierarchicalLabelValue(
@@ -98,6 +109,8 @@ export type CriterionType =
   | "o_counter"
   | "resolution"
   | "average_resolution"
+  | "video_codec"
+  | "audio_codec"
   | "duration"
   | "favorite"
   | "hasMarkers"
@@ -129,6 +142,8 @@ export type CriterionType =
   | "weight"
   | "measurements"
   | "fake_tits"
+  | "penis_length"
+  | "circumcised"
   | "career_length"
   | "tattoos"
   | "piercings"
@@ -176,4 +191,6 @@ export type CriterionType =
   | "scene_created_at"
   | "scene_updated_at"
   | "description"
-  | "scene_code";
+  | "scene_code"
+  | "disambiguation"
+  | "hasChapters";

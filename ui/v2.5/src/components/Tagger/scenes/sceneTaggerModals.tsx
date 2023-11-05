@@ -8,25 +8,27 @@ import { useIntl } from "react-intl";
 import { faTags } from "@fortawesome/free-solid-svg-icons";
 
 type PerformerModalCallback = (toCreate?: GQL.PerformerCreateInput) => void;
-type StudioModalCallback = (toCreate?: GQL.StudioCreateInput) => void;
+type StudioModalCallback = (
+  toCreate?: GQL.StudioCreateInput,
+  parentInput?: GQL.StudioCreateInput
+) => void;
 
 export interface ISceneTaggerModalsContextState {
   createPerformerModal: (
     performer: GQL.ScrapedPerformerDataFragment,
-    callback: (toCreate?: GQL.PerformerCreateInput) => void
+    callback: PerformerModalCallback
   ) => void;
   createStudioModal: (
     studio: GQL.ScrapedSceneStudioDataFragment,
-    callback: (toCreate?: GQL.StudioCreateInput) => void
+    callback: StudioModalCallback
   ) => void;
 }
 
-export const SceneTaggerModalsState = React.createContext<ISceneTaggerModalsContextState>(
-  {
+export const SceneTaggerModalsState =
+  React.createContext<ISceneTaggerModalsContextState>({
     createPerformerModal: () => {},
     createStudioModal: () => {},
-  }
-);
+  });
 
 export const SceneTaggerModals: React.FC = ({ children }) => {
   const { currentSource } = useContext(TaggerStateContext);
@@ -74,9 +76,12 @@ export const SceneTaggerModals: React.FC = ({ children }) => {
     setPerformerCallback(() => callback);
   }
 
-  function handleStudioSave(toCreate: GQL.StudioCreateInput) {
+  function handleStudioSave(
+    toCreate: GQL.StudioCreateInput,
+    parentInput?: GQL.StudioCreateInput
+  ) {
     if (studioCallback) {
-      studioCallback(toCreate);
+      studioCallback(toCreate, parentInput);
     }
 
     setStudioToCreate(undefined);
@@ -133,6 +138,7 @@ export const SceneTaggerModals: React.FC = ({ children }) => {
             { id: "actions.create_entity" },
             { entityType: intl.formatMessage({ id: "studio" }) }
           )}
+          endpoint={endpoint}
         />
       )}
       {children}

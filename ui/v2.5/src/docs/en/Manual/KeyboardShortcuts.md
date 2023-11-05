@@ -24,7 +24,7 @@
 
 | Keyboard sequence | Action |
 |-------------------|--------|
-| `/` | Focus search field |
+| `/` | Focus search field / focus query field in filter dialog |
 | `f` | Show Add Filter dialog |
 | `r` | Reshuffle if sorted by random |
 | `v g` | Set view to grid |
@@ -64,6 +64,8 @@
 | `p n` | Play next scene in queue |
 | `p p` | Play previous scene in queue |
 | `p r` | Play random scene in queue |
+| `Space` | Play/pause player |
+| `Enter` | Play/pause player |
 | `←` | Seek backwards by 10 seconds |
 | `→` | Seek forwards by 10 seconds |
 | `Shift + ←` | Seek backwards by 5 seconds |
@@ -73,6 +75,10 @@
 | `{1-9}` | Seek to 10-90% duration |
 | `[` | Scrub backwards 10% duration |
 | `]` | Scrub forwards 10% duration |
+| `↑` | Increase volume 10% |
+| `↓` | Decrease volume 10% |
+| `m` | Toggle mute |
+| `Shift + l` | Toggle player looping |
 
 ### Scene Markers tab shortcuts
 
@@ -84,8 +90,10 @@
 
 | Keyboard sequence | Action |
 |-------------------|--------|
-| `r {1-5}` | Set rating |
-| `r 0` | Unset rating |
+| `r {1-5}` | Set rating (stars) |
+| `r 0` | Unset rating (stars) |
+| `r {0-9} {0-9}` | Set rating (decimal - `00` for `10.0`) |
+| ``r ` `` | Unset rating (decimal) |
 | `s s` | Save Scene |
 | `d d` | Delete Scene |
 | `Ctrl + v` | Paste Scene cover |
@@ -110,8 +118,11 @@
 | `e` | Edit Movie |
 | `s s` | Save Movie |
 | `d d` | Delete Movie |
-| `r {1-5}` | Set rating (in edit mode) |
-| `r 0` | Unset rating (in edit mode) |
+| `r {1-5}` | [Edit mode] Set rating (stars) |
+| `r 0` | [Edit mode] Unset rating (stars) |
+| `r {0-9} {0-9}` | [Edit mode] Set rating (decimal - `r 0 0` for `10.0`) |
+| ``r ` `` | [Edit mode] Unset rating (decimal) |
+| `,` | Expand/Collapse Details |
 | `Ctrl + v` | Paste Movie image |
 
 [//]: # "Commented until implementation is dealt with"
@@ -134,11 +145,11 @@
 
 | Keyboard sequence | Action |
 |-------------------|--------|
-| `a` | Details tab |
 | `c` | Scenes tab |
 | `e` | Edit tab |
 | `o` | Operations tab |
 | `f` | Toggle favourite |
+| `,` | Expand/Collapse Details |
 
 ### Edit Performer tab shortcuts
 
@@ -161,6 +172,7 @@
 | `e` | Edit Studio |
 | `s s` | Save Studio |
 | `d d` | Delete Studio |
+| `,` | Expand/Collapse Details |
 | `Ctrl + v` | Paste Studio image |
 
 ## Tags Page shortcuts
@@ -176,4 +188,5 @@
 | `e` | Edit Tag |
 | `s s` | Save Tag |
 | `d d` | Delete Tag |
+| `,` | Expand/Collapse Details |
 | `Ctrl + v` | Paste Tag image |
