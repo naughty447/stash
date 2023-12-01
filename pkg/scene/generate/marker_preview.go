@@ -11,7 +11,7 @@ import (
 
 const (
 	markerPreviewWidth        = 640
-	markerPreviewDuration     = 1
+	markerPreviewDuration     = 10
 	markerPreviewAudioBitrate = "64k"
 
 	markerImageDuration = 5

@@ -437,7 +437,7 @@ func setPageSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	cspDirectives += " worker-src blob:; child-src 'none'; object-src 'none'; form-action 'self';"
 
 	w.Header().Set("Referrer-Policy", "same-origin")
-	w.Header().Set("Content-Security-Policy", cspDirectives)
+	// w.Header().Set("Content-Security-Policy", cspDirectives)
 }
 
 func SecurityHeadersMiddleware(next http.Handler) http.Handler {

@@ -111,6 +111,19 @@ const Tv: React.FC<ITv> = ({ filterHook }) => {
             );
           }}
         />
+        <input id="skipAfterInSec" type="number" placeholder="skipAfterInSec" />
+        <Button
+          style={{ float: "right" }}
+          onClick={() => {
+            setInterval(() => {
+              document
+                .getElementsByClassName("vjs-skip-button vjs-icon-next-item")[0]
+                ?.click();
+            }, +document.getElementById("skipAfterInSec").value);
+          }}
+        >
+          StartSkipper
+        </Button>
       </div>
     </>
   );
@@ -194,6 +207,7 @@ const Player: React.FC<IPlayer> = ({
   }
   return (
     <>
+      {scene && <a href={`/scenes/${scene.id}`}>Go to Scene</a>}
       {scene && localStorage.getItem("VLC") !== "true" ? (
         <ScenePlayer
           key="ScenePlayer"
